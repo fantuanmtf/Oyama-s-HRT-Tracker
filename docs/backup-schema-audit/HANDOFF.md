@@ -113,3 +113,24 @@ change protection rules.
 3. Whether to add timestamps/tombstones to local-only schemas (schema change; needs audit).
 4. Which preferences are in Option B.
 5. Replace-only vs merge support for Option B.
+
+### L1 synthetic restore harness (implemented)
+
+- **Goal:** execute T1-T15 against a pure, isolated model without production imports or network access.
+- **Code:** `l1-harness/l1_restore_model.py`, `l1-harness/test_l1_restore_model.py`.
+- **Results:** `L1_HARNESS_RESULTS.md`.
+- **Command:** `python3 -m unittest -v test_l1_restore_model.py`.
+- **Result:** 15/15 tests PASS; 0.005s.
+- **Commit:** `eaa0ad6` (`test: add isolated L1 restore model harness`); follow-up commit removes accidentally committed `__pycache__` and adds `.gitignore`.
+- **Status:** L1 PASS; L2 production-function tests BLOCKED; L3 end-to-end restore BLOCKED; production restore NOT_IMPLEMENTED; conflict/preference policy NEEDS_HUMAN_APPROVAL.
+- **Limits:** L1 validates only the synthetic model and test specification. It does not prove production export/import, transaction, OpenPGP, UI, or storage behavior.
+- **Push:** branch is pushed through `76777fe`; the L1 follow-up commit is recorded at the final checkpoint.
+
+### Open decisions (L1)
+
+1. Which Option B categories are in product scope.
+2. Conflict policy where local-only records lack `updatedAt`/tombstones.
+3. Whether to add timestamps/tombstones to local-only schemas.
+4. Which preferences are in Option B.
+5. Replace-only vs merge support for Option B.
+6. Whether L2 tests may import production TypeScript modules directly or require extracted fixtures.
