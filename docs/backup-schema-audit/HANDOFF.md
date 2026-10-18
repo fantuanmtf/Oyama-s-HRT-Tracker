@@ -65,15 +65,33 @@ Docker, or releases.
   `buildExportPayload`, `applySyncedState`, `normalizeSupply`,
   `normalizePlanItem`, `saveSupply`, or quick-dose persistence.
 
+## Restore semantics work item
+
+- **Commit:** `473414f` — `docs: design complete-device restore semantics`
+- **Document:** `docs/backup-schema-audit/RESTORE_SEMANTICS.md`
+- **Status:** `NEEDS_HUMAN_APPROVAL`
+- Covers Option B restore for quick doses, supplies, plan items, calibration
+  state, and selected preferences.
+- Defines replace vs merge actions, all-or-nothing application, category rules,
+  conflict policy, credential exclusions, account/mode boundaries, and
+  synthetic tests T1–T15.
+- **REVIEW_REQUIRED:** local-only arrays have no tombstones or `updatedAt`;
+  conflict resolution cannot be authoritative without a product/schema decision.
+- **FAIL:** current export remains record-only; local-only restore is not
+  implemented.
+- No production code was changed; no real data was used.
+
 ## Next work item
 
 1. Decide whether to ship Option A only or commit to Option B.
-2. If Option B is approved, define restore semantics for local-only data and
-   add synthetic tests T1–T13 before implementation.
-3. Align the experimental HRTB schema with the production `Supply.pack` object
+2. If Option B is approved, approve the restore conflict policy and decide
+   whether local-only arrays need tombstones/`updatedAt`.
+3. Approve the preference inclusion/exclusion matrix.
+4. Align the experimental HRTB schema with the production `Supply.pack` object
    union before any format stabilization.
 
 ## Push status
 
-Pending. Push only this branch to `origin`; never to `upstream`. Do not merge,
-release, deploy, or change protection rules.
+`473414f` is committed locally. Push only this branch to `origin` after the
+final safety check; never to `upstream`. Do not merge, release, deploy, or
+change protection rules.
