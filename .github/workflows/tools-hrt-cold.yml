@@ -1,0 +1,57 @@
+name: Tools hrt-cold
+
+on:
+  push:
+    branches:
+      - "Recovery/Tools"
+    paths:
+      - "tools/hrt-cold/**"
+      - ".github/workflows/tools-hrt-cold.yml"
+  pull_request:
+    paths:
+      - "tools/hrt-cold/**"
+      - ".github/workflows/tools-hrt-cold.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Go tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    defaults:
+      run:
+        working-directory: tools/hrt-cold
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: tools/hrt-cold/go.mod
+          cache: false
+
+      - name: Show Go version
+        run: go version
+
+      - name: Check formatting
+        if: runner.os == 'Linux'
+        shell: bash
+        run: test -z "$(gofmt -l .)"
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test -count=1 -v ./...
+
+      - name: go build
+        run: go build ./...
