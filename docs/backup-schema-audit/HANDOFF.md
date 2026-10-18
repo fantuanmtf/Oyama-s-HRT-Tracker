@@ -198,3 +198,30 @@ change protection rules.
 - **Coverage:** cross-process publish winner and Windows `icacls` ACL smoke check executed on native Windows.
 - **Status:** Windows ACL smoke `PASS`; SMB/network filesystem, hard-link privilege edge cases, crash cleanup and application-level Replace/Merge atomicity remain `NOT_TESTED` or `BLOCKED`.
 - **Push:** pending at the time of this handoff; final checkpoint records the remote SHA.
+
+## L2 import/merge seam implementation (Task B)
+
+- **Code + tests commit:** `fa4c416` — `refactor: extract backup import reconciliation seam`.
+- **Files:** `src/utils/backupImport.ts`, `src/hooks/useAppData.ts`, `tests/backupImport.test.ts`.
+- **What changed:** `processImportedData` / `mergeImportedData` payload parsing, replacement and merge decisions, v1 cross-mode routing, replacement tombstones, and merge counts moved into pure functions with an injected `StorageLike` and clock. The hook still owns React state, dialogs, and `setWeight` / `setPkParams`.
+- **API compatibility:** existing `backupState.ts` exports are unchanged; `DoseTemplate` / `QuickDose` re-exports remain; the hook's returned object is unchanged.
+- **Synthetic L2 coverage:** v2 modes, v1 flat object and bare array, merge by id, replacement tombstones, tombstone clearing, cross-mode records, malformed/oversized input, duplicate ids (characterized as preserved), credentials ignored, empty vs missing arrays, unknown fields/modes, process weight clamping, merge weight behavior, and second-run idempotence.
+- **Checks actually run:**
+  - `npx tsc --noEmit` — pass.
+  - `npm test` — 17 files passed; 377 tests passed, 4 expected fail (381 total); 16.39s.
+  - `node node_modules/vitest/vitest.mjs run tests/backupImport.test.ts` — 11/11 pass.
+  - `git diff --check` — pass.
+  - `npx eslint src/utils/backupImport.ts tests/backupImport.test.ts src/hooks/useAppData.ts` — no errors; warnings only (existing hook effects plus `any` warnings).
+- **Status:** L2 import/merge surface PASS for the tested functions. Production restore, Option B export/restore, and L3 end-to-end remain `BLOCKED` / `NOT_IMPLEMENTED`.
+- **Remaining limitations:** no multi-key transaction or rollback; failure-path tombstone/state ordering differs from the old inline code (success path identical); duplicate ids are preserved; unknown fields are ignored; merge counts other-mode templates differently from other-mode events/labs; hook wiring is not rendered in tests; Windows/browser/OpenPGP behavior remains unverified.
+- **Safety:** tests use fictional ids, dates, doses, labs, and synthetic credential strings only. No real health data, credentials, keys, or backups were used.
+- **Push:** this handoff update is committed after `fa4c416`; the final checkpoint records the remote SHA.
+
+### Open decisions (unchanged)
+
+1. Option B include/exclude and preference scope.
+2. Conflict representation for same-id records without reliable `updatedAt`.
+3. Replace transaction/rollback mechanism.
+4. Whether duplicate ids in a backup should reject the category or be deduplicated.
+5. Whether unknown critical fields/versions should reject the import rather than be ignored.
+6. Whether the React hook import wrappers need a separate hook/browser test harness.

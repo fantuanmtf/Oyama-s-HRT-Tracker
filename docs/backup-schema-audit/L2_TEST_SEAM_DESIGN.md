@@ -1,6 +1,6 @@
 # L2 Production Test Seam Design
 
-**Status:** design only; `NEEDS_HUMAN_APPROVAL` for any production refactor.
+**Status:** Task B import/merge extraction implemented; L2 import tests PASS for the tested surface; production restore remains `BLOCKED`.
 **Scope:** test real production functions; do not implement L2, L3, or production restore.
 
 ## 1. Baseline
@@ -8,6 +8,7 @@
 - Repo: `/home/haiyan/git/Oyama-s-HRT-Tracker`
 - Branch: `agent/backup-schema-audit`
 - HEAD before this work: `bbc5eee11686c3ad60e75f1d92755da08cf623bc`
+- HEAD before Task B (import/merge extraction): `e17c000edc47b974176a7742043c73a4af23f221`
 - Existing L1 model: `docs/backup-schema-audit/l1-harness/`
 - Existing design: `RESTORE_SEMANTICS.md`, `SYNTHETIC_RESTORE_HARNESS.md`
 - Test runner: Vitest 4, `environment: 'node'`, `tests/**/*.test.ts`, `tests/setup.ts`
@@ -34,11 +35,14 @@
 
 `normalizeSupply` and `normalizePlanItem` are exported, so they can be tested immediately without modifying production code. The import/export/apply functions are defined inside the `useAppData` hook and depend on React contexts and `localStorage`; they are not importable by a plain Vitest test.
 
+**Post-extraction note:** this table records the pre-extraction baseline. The import sanitizers and storage helpers now live in `src/utils/backupState.ts`; `processImportedDataToStorage`, `mergeImportedDataToStorage`, and `reconcileReplacementInStorage` live in `src/utils/backupImport.ts`; `buildExportPayloadFromStorage` and `applySyncedStateToStorage` live in `backupState.ts`. The hook methods are thin wrappers around these helpers.
+
 ## 3. Minimal seam proposal
 
 ### Option A — extract pure helpers with an injected storage interface (recommended)
 
-Proposed production refactor, **not implemented in this work item**:
+Production refactor, implemented for export/apply in Seam A and for
+import/merge/replace in Task B:
 
 ```ts
 export interface StorageLike {
@@ -52,6 +56,9 @@ export function applySyncedStateToStorage(state: SyncState, owner: string, stora
 export function sanitizeImportedEvents(raw: unknown): DoseEvent[]
 export function sanitizeImportedLabResults(raw: unknown): LabResult[]
 export function sanitizeImportedTemplates(raw: unknown): DoseTemplate[]
+export function processImportedDataToStorage(parsed: unknown, context: ImportStorageContext, options?: { check?: boolean; now?: number }): ProcessImportedDataResult
+export function mergeImportedDataToStorage(parsed: unknown, context: ImportStorageContext, options?: { now?: number }): MergeImportedDataResult
+export function reconcileReplacementInStorage(storage: StorageLike, owner: string, mode: ModeKey, kind: RecordKind, before: { id: string }[], after: { id: string }[], now?: number): void
 ```
 
 - Move the existing logic without behavior changes.
@@ -295,3 +302,68 @@ Duration 18.25s
 **Platform:** Linux tests only. Windows `os.Link`, ACL/permission semantics, concurrent-write behavior, path handling and failure semantics are `NOT_TESTED`; native Windows CI is not yet configured.
 
 **Not proven:** production restore, Option B export/restore, cross-key rollback, browser/UI behavior, OpenPGP, and L3 end-to-end. No production restore implementation was added.
+
+## Implementation checkpoint (Task B: import/merge seam)
+
+**Status:** import/merge/replace reconciliation extracted and tested; production restore remains `BLOCKED`.
+
+**Files:**
+
+- `src/utils/backupImport.ts` — pure import engine with an injected `StorageLike` and explicit clock.
+- `src/hooks/useAppData.ts` — thin wrappers for React state, dialogs, and the weight/PK setters.
+- `tests/backupImport.test.ts` — 11 synthetic L2 tests.
+- `src/utils/backupState.ts` — unchanged public sanitizers/storage helpers; no existing export was removed or renamed.
+
+**Extraction boundary:**
+
+- Payload parsing and validation: v2 `modes`, flat v1 object, and bare v1 array.
+- Replacement semantics: present arrays replace; absent arrays are silence; present empty arrays clear.
+- Replacement tombstones: dropped ids are recorded; restored ids lose any tombstone that would delete them again.
+- Merge semantics: union by id, keep local on duplicate, clear tombstones for incoming ids, report only newly added records.
+- v1 cross-mode routing by ester (`isTestosteroneEster`) and lab unit (`isT_LabUnit`); v2 records stay in their mode block.
+- `check` validation path: same sanitisation and "No valid entries" test, but no storage or tombstone write.
+- The hook still owns `setEvents`/`setLabResults`/`setDoseTemplates`, `setWeight`/`setPkParams`, and `showDialog`; no UI, wording, or dialog flow changed.
+
+**Synthetic coverage added:**
+
+- v2 modes import, including active and other-mode replacement.
+- v1 flat object and bare event-array import.
+- Merge by id, including idempotence on a second run.
+- Replacement tombstones for missing records and tombstone clearing for restored records.
+- Cross-mode v1 events and labs; v2 records remain in their mode block.
+- Malformed input, unknown routes, and the 20,000-entry ceiling.
+- Duplicate ids: current behavior preserves duplicates; characterized, not silently "fixed".
+- Credential fields ignored and seeded credentials left untouched.
+- Empty vs missing arrays on replace and merge.
+- Unknown top-level fields, unknown record fields, and unknown mode names ignored.
+- Process weight clamped and merge weight only increasing, matching the previous paths.
+
+**Checks actually run:**
+
+```text
+node node_modules/vitest/vitest.mjs run tests/backupImport.test.ts
+Test Files 1 passed (1)
+Tests 11 passed (11)
+
+npx tsc --noEmit
+(no output; pass)
+
+npm test
+Test Files 17 passed (17)
+Tests 377 passed | 4 expected fail (381)
+
+git diff --check
+(no output; pass)
+```
+
+**Remaining limitations:**
+
+- No multi-key transaction. Both import paths still write storage keys sequentially; a later failure can leave earlier keys written. Replace all-or-nothing remains `BLOCKED`.
+- On a storage failure, the extracted helper completes active-mode tombstone reconciliation before the hook installs React state, whereas the old inline code interleaved each reconcile with its setter. The success path is identical; the failure-path interleaving is a residual difference and is not covered by a browser test.
+- Duplicate ids inside a backup are preserved by the current sanitizers and import paths. Deduplication is not implemented and needs a product decision.
+- Merge reports other-mode events and labs but not other-mode templates, matching the historical count.
+- Merge accepts any positive numeric weight (no finite/upper bound), matching the historical behavior; process import clamps.
+- Unknown fields are ignored rather than rejected; there is no strict schema or version gate.
+- Credentials are excluded by construction in these paths, but this is not a security audit.
+- The React hook wiring itself is not rendered in tests; L2 covers the extracted production functions, not browser/localStorage behavior.
+- L2 tests do not prove production restore, Option B export/restore, rollback, OpenPGP, UI confirmation, Windows behavior, or License Gate/Docker/production readiness.
