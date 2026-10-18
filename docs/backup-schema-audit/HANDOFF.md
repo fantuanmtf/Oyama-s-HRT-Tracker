@@ -157,3 +157,13 @@ change protection rules.
 - **L2 matrix:** L2-01..L2-24, including product-scope, preference mapping, conflict reporting, replace preview, and Windows/Linux tests.
 - **Status:** L2 design PASS; L2 implementation BLOCKED; L3 BLOCKED; Windows NOT_TESTED; License Gate/Docker/production BLOCKED.
 - **Push:** this supplement is committed after `1e528c2`; final push status is recorded at the checkpoint.
+
+## L2 Seam A implementation
+
+- **Files:** `src/utils/backupState.ts`, `src/hooks/useAppData.ts`, `tests/backupState.test.ts`.
+- **Behavior:** export/apply storage logic extracted to pure helpers with `StorageLike`; active-mode React state updates remain in the hook.
+- **Tests:** 8 new synthetic tests; full suite 16 files / 366 passed / 4 expected fail; `tsc --noEmit` and `git diff --check` pass.
+- **Transaction:** partial-write test confirms earlier keys remain when a later `setItem` throws. Replace all-or-nothing remains BLOCKED.
+- **Platform:** Linux only. Windows `os.Link`, ACL/permissions, path and concurrency behavior NOT_TESTED.
+- **Status:** L2 Seam A implementation PASS for tested surface; production restore/export/rollback NOT implemented; Option B still NEEDS_HUMAN_APPROVAL; License Gate/Docker/production BLOCKED.
+- **Push:** implementation commit and this handoff update are recorded at the checkpoint.

@@ -251,3 +251,47 @@ The prototype must not claim Windows file safety from Linux test results.
 6. Decide whether L2 adds test-only exports or a separate test adapter.
 7. Approve Windows CI and ACL-based file-protection tests.
 8. Keep License Gate, Docker and production integration BLOCKED until separate approval.
+
+## Implementation checkpoint (Seam A)
+
+**Status:** Seam A implementation `PASS` for the tested L2 surface; production restore remains `BLOCKED`.
+
+**Files:**
+
+- `src/utils/backupState.ts` — pure storage helpers and sanitizers.
+- `src/hooks/useAppData.ts` — delegates export/apply storage work to the helpers; keeps React state updates for the active mode.
+- `tests/backupState.test.ts` — eight synthetic L2 tests.
+
+**Behavior preserved:**
+
+- `buildExportPayload` still returns the v2 shape, active-mode overlay, v1 flat mirrors, weight/PK stamps, and excludes credentials/local-only data.
+- `applySyncedState` still sanitizes both modes before writes, writes records/tombstones and LWW weight/PK scalars, and updates active-mode React state.
+- `DoseTemplate` and `QuickDose` remain re-exported from `useAppData`.
+
+**Tests actually run:**
+
+```text
+node node_modules/vitest/vitest.mjs run
+Test Files 16 passed (16)
+Tests 366 passed | 4 expected fail (370)
+Duration 18.25s
+```
+
+`tsc --noEmit` and `git diff --check` passed.
+
+**Coverage added:**
+
+- Supply pack object-union helpers and branches.
+- String `Supply.pack` rejection.
+- Unknown pack-kind characterization: current `normalizeSupply` accepts it; `REVIEW_REQUIRED`.
+- Plan bounds/normalization.
+- Import sanitizers.
+- Export shape excludes credentials and local-only categories.
+- Sync writes records/scalars and does not write local-only categories.
+- Partial-write behavior when a later `localStorage.setItem` throws.
+
+**Transaction finding:** a later write failure leaves earlier keys written. `applySyncedStateToStorage` is not atomic; Replace all-or-nothing remains `BLOCKED`.
+
+**Platform:** Linux tests only. Windows `os.Link`, ACL/permission semantics, concurrent-write behavior, path handling and failure semantics are `NOT_TESTED`; native Windows CI is not yet configured.
+
+**Not proven:** production restore, Option B export/restore, cross-key rollback, browser/UI behavior, OpenPGP, and L3 end-to-end. No production restore implementation was added.
