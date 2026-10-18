@@ -1,9 +1,10 @@
 # Tools Checkpoint — hrt-cold
 
-**Status:** Tools branch checkpoint complete locally. The `.hrtb` format remains
-experimental and is **not stable**. This checkpoint does **not** unblock the
-License Gate, Docker, production website integration, L3 browser tests, merge,
-release, or a pull request.
+**Status:** Tools branch checkpoint complete and pushed to `origin/Recovery/Tools`;
+native Ubuntu and Windows CI passed. The `.hrtb` format remains experimental and
+is **not stable**. This checkpoint does **not** unblock the License Gate,
+Docker, production website integration, L3 browser tests, merge, release, or a
+pull request.
 
 ## Branch and baseline
 
@@ -20,7 +21,8 @@ release, or a pull request.
 | `73dd4f5` | `docs: add website-Tools complete-backup interface` |
 | `36ccf29` | `feat(tools): add offline OpenPGP cold-backup CLI` |
 | `07cc714` | `ci(tools): test hrt-cold on Linux and Windows` |
-| this commit | `docs(tools): record Tools checkpoint` |
+| `adb564f` | `docs(tools): record Tools checkpoint` |
+| this commit | `docs(tools): record native CI results` |
 
 ## Files
 
@@ -82,6 +84,7 @@ Working directory: `tools/hrt-cold` on Linux/amd64 with Go 1.27.1.
 | `GOOS=windows GOARCH=amd64 go vet ./...` | PASS (cross-compile) |
 | `GOOS=windows GOARCH=amd64 go test -c` | PASS (test binary compiles) |
 | `GOOS=windows GOARCH=amd64 go build` | PASS (cross-compile) |
+| GitHub Actions `39152774184` | PASS — Ubuntu and Windows native jobs |
 
 Staticcheck, govulncheck, gofumpt, and golangci-lint are not installed in this
 environment; they were not run. This is not a cryptographic audit.
@@ -131,13 +134,16 @@ Tests use fresh keys generated at test time and synthetic data only. Covered:
 
 - **Linux:** native `go vet`, `go test`, race tests, build, and manual CLI
   round-trip PASS.
-- **Windows:** native GitHub Actions workflow added for `windows-latest`
-  (`go vet`, `go test -count=1 -v`, `go build`). Windows test binary
-  cross-compiles locally. **Native Windows execution is pending the first CI
-  run**; do not claim Windows results until the run URL and logs are recorded.
-- **Windows semantics:** `os.Link` hard-link publish, NTFS error mapping,
-  directory fsync behavior, and ACL equivalence to Unix `0600` are not proven
-  by Linux tests. Passphrase-file ACLs are not verified by the tool.
+- **Windows:** native GitHub Actions workflow run
+  [39152774184](https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39152774184)
+  passed both `Go tests (ubuntu-latest)` and `Go tests (windows-latest)` for
+  head `adb564f30b84376e0d3abd4d1406f6441e868cf0`. Windows ran native
+  `go vet`, `go test -count=1 -v`, and `go build`; the formatting step is
+  Linux-only.
+- **Windows semantics:** native tests exercised `os.Link` no-replace publish,
+  Windows error mapping, atomic-write failure paths, and passphrase-file
+  handling. Directory fsync durability and ACL equivalence to Unix `0600`
+  remain unproven; passphrase-file ACLs are not verified by the tool.
 - **Other filesystems:** FAT/exFAT and SMB/network filesystems are `NOT_TESTED`;
   unsupported hard links fail closed with no rename fallback.
 - **macOS/Android/iOS:** out of scope.
@@ -175,9 +181,15 @@ a legal opinion. **License Gate remains BLOCKED.**
 - License Gate, Docker, production website integration, L3 browser tests, merge,
   release, and PR remain **BLOCKED / not started**.
 
-## Next step
+## Push and next step
 
-After the branch is pushed to `origin/Recovery/Tools`, record the remote SHA and
-the GitHub Actions run URL. If the Windows job fails, fix the Windows-specific
-failure and rerun before treating the Tools checkpoint as complete. Then stop:
-do not start website integration, L3, merge, release, or PR work.
+- **Push:** `Recovery/Tools` pushed to `origin` as `7b0995a..adb564f`.
+- **Remote SHA:** `adb564f30b84376e0d3abd4d1406f6441e868cf0`.
+- **Native CI:** [run 39152774184](https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39152774184),
+  `completed / success`; Ubuntu and Windows jobs both passed.
+- **Next step:** stop at the Tools checkpoint. Do not start production website
+  integration, L3 browser tests, merge, release, or a PR. Keep License Gate,
+  Docker, and production integration blocked pending separate approval.
+- The final documentation commit after `adb564f` only records CI evidence; the
+  branch may be one commit ahead of the SHA that produced run `39152774184`.
+  Its own CI run is the authoritative check for the final commit.

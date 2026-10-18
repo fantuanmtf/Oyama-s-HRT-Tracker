@@ -234,6 +234,7 @@ change protection rules.
 - **Container:** experimental Phase 1F-aligned `HRTB` header (magic, u16 version, u16 flags, u64 payload length, binary OpenPGP payload). It is **not stable**.
 - **Safety:** no-overwrite `CreateTemp` + fsync + `os.Link` publish; container/envelope validation; wrong key/passphrase, tamper, truncation, unknown version, oversized input, existing output, and write-failure tests. No physical-erasure claim.
 - **Local Linux checks:** `gofmt` clean; `go vet` PASS; `go test -count=1 -v ./...` PASS (23 top-level tests, 45 subtests); `go test -race` PASS; `go build` PASS; `go mod verify` PASS.
-- **Windows:** native `windows-latest` workflow added; test binary cross-compiles locally; native execution result is recorded by the first CI run, not assumed from Linux.
+- **Windows:** native [run `39152774184`](https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39152774184) passed both `ubuntu-latest` and `windows-latest` jobs for head `adb564f30b84376e0d3abd4d1406f6441e868cf0` (`go vet`, `go test -count=1 -v`, `go build`). Directory fsync durability, ACL equivalence, and non-NTFS filesystems remain `NOT_TESTED`.
+- **Push:** `Recovery/Tools` pushed to `origin` as `7b0995a..adb564f`; remote SHA `adb564f30b84376e0d3abd4d1406f6441e868cf0`.
 - **Files:** `tools/hrt-cold/HANDOFF.md` (checkpoint details), `tools/hrt-cold/README.md`, `tools/hrt-cold/THIRD_PARTY_NOTICES.md`, `.github/workflows/tools-hrt-cold.yml`.
-- **Still blocked:** `.hrtb` format stability, License Gate, Docker, production website integration, L3 browser tests, merge, release, and PR. Do not treat this checkpoint as unblocking any of them.
+- **Still blocked:** `.hrtb` format stability, License Gate, Docker, production website integration, L3 browser tests, merge, release, and PR. Do not treat this checkpoint as unblocking any of them. The documentation commit after `adb564f` records CI evidence and has its own CI run.
