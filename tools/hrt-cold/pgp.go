@@ -10,13 +10,20 @@ import (
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp/packet"
+	openpgp "github.com/ProtonMail/go-crypto/openpgp/v2"
 	"github.com/ProtonMail/gopenpgp/v3/constants"
 	"github.com/ProtonMail/gopenpgp/v3/crypto"
 )
 
+var (
+	errPayloadNotEncrypted = errors.New("container payload is not an encrypted OpenPGP message")
+	errNoEncryptedPayload  = errors.New("container payload has no encrypted data packet")
+	errNoRecipient         = errors.New("container payload has no public-key recipient")
+)
+
 type recipientInfo struct {
-	KeyID       uint64
-	Fingerprint string
+	AdvertisedKeyID       uint64
+	AdvertisedFingerprint string
 }
 
 func generateLockedKey(passphrase []byte) (privateArmor, publicArmor, fingerprint string, err error) {
@@ -98,22 +105,50 @@ func decryptContainer(privateArmor string, passphrase, payload []byte) ([]byte, 
 	if privateKey.IsRevoked(now) {
 		return nil, "", errors.New("private key is revoked")
 	}
-
-	pgp := crypto.PGP()
-	decryption, err := pgp.Decryption().
-		DecryptionKey(privateKey).
-		MaxDecompressedMessageSize(int64(maxBundleBytes)).
-		New()
-	if err != nil {
-		return nil, "", fmt.Errorf("create decryption handle: %w", err)
+	entity := privateKey.GetEntity()
+	if entity == nil {
+		return nil, "", errors.New("private key has no OpenPGP entity")
 	}
-	defer decryption.ClearPrivateParams()
 
-	result, err := decryption.Decrypt(payload, crypto.Bytes)
+	// Decrypt through go-crypto directly so the message metadata can be
+	// checked. gopenpgp does not expose whether the parsed message was
+	// actually encrypted or which key decrypted it, and a literal,
+	// compressed-plaintext, or signed-only message would otherwise be
+	// accepted without the private key taking part.
+	decompressedLimit := int64(maxBundleBytes)
+	config := &packet.Config{
+		MaxDecompressedMessageSize: &decompressedLimit,
+		CheckPacketSequence:        packet.BoolPointer(true),
+		CheckIntendedRecipients:    packet.BoolPointer(true),
+	}
+	message, err := openpgp.ReadMessage(
+		bytes.NewReader(payload),
+		openpgp.EntityList{entity},
+		nil,
+		config,
+	)
 	if err != nil {
 		return nil, "", fmt.Errorf("decrypt (wrong key or corrupt container): %w", err)
 	}
-	plaintext := result.Bytes()
+	if !message.IsEncrypted {
+		return nil, "", fmt.Errorf(
+			"%w: literal, compressed-plaintext, and signed-only payloads are rejected",
+			errPayloadNotEncrypted,
+		)
+	}
+	if message.DecryptedWith.Entity == nil || message.DecryptedWith.PrivateKey == nil {
+		return nil, "", errors.New("container payload was not decrypted with the supplied private key")
+	}
+	if message.LiteralData == nil || message.UnverifiedBody == nil {
+		return nil, "", errors.New("encrypted OpenPGP payload has no literal data")
+	}
+
+	// Reading to EOF is required: the MDC/integrity check runs when the
+	// encrypted packet is closed at the end of the plaintext body.
+	plaintext, err := io.ReadAll(message.UnverifiedBody)
+	if err != nil {
+		return nil, "", fmt.Errorf("verify encrypted payload (tampered, truncated, or corrupt container): %w", err)
+	}
 	if len(plaintext) == 0 {
 		return nil, "", fmt.Errorf("%w: decrypted payload is empty", errBundleSchema)
 	}
@@ -123,8 +158,10 @@ func decryptContainer(privateArmor string, passphrase, payload []byte) ([]byte, 
 	return plaintext, privateKey.GetFingerprint(), nil
 }
 
-// inspectRecipients reads the unencrypted public-key-encrypted session-key
-// packets. It never decrypts the session key or the message.
+// inspectRecipients reads the unauthenticated public-key-encrypted session-key
+// packets (PKESK) at the start of the payload. It never decrypts the session
+// key or the message, and a PKESK KeyID must not be treated as proof that the
+// container is encrypted to a particular key.
 func inspectRecipients(payload []byte) ([]recipientInfo, error) {
 	reader := bytes.NewReader(payload)
 	var recipients []recipientInfo
@@ -136,22 +173,43 @@ func inspectRecipients(payload []byte) ([]recipientInfo, error) {
 		if err != nil {
 			return nil, fmt.Errorf("parse OpenPGP packet: %w", err)
 		}
-		encryptedKey, ok := parsed.(*packet.EncryptedKey)
-		if !ok {
-			break
+		switch p := parsed.(type) {
+		case *packet.EncryptedKey:
+			info := recipientInfo{AdvertisedKeyID: p.KeyId}
+			if len(p.KeyFingerprint) > 0 {
+				info.AdvertisedFingerprint = hex.EncodeToString(p.KeyFingerprint)
+			}
+			recipients = append(recipients, info)
+		case *packet.SymmetricallyEncrypted:
+			if !p.IntegrityProtected {
+				return nil, errors.New("container payload is not integrity protected")
+			}
+			if len(recipients) == 0 {
+				return nil, errNoRecipient
+			}
+			return recipients, nil
+		case *packet.AEADEncrypted:
+			if len(recipients) == 0 {
+				return nil, errNoRecipient
+			}
+			return recipients, nil
+		case *packet.SymmetricKeyEncrypted:
+			return nil, errors.New("container payload is passphrase-encrypted, not public-key encrypted")
+		default:
+			return nil, fmt.Errorf(
+				"%w: unexpected %T packet",
+				errPayloadNotEncrypted,
+				parsed,
+			)
 		}
-		info := recipientInfo{KeyID: encryptedKey.KeyId}
-		if len(encryptedKey.KeyFingerprint) > 0 {
-			info.Fingerprint = hex.EncodeToString(encryptedKey.KeyFingerprint)
-		}
-		recipients = append(recipients, info)
 	}
-	return recipients, nil
+	return nil, errNoEncryptedPayload
 }
 
-// matchRecipient maps the unencrypted recipient key IDs in the container to
-// full fingerprints from the supplied public key. Matching does not decrypt.
-func matchRecipient(recipientArmor string, recipients []recipientInfo) ([]string, string, error) {
+// matchAdvertisedRecipient maps unauthenticated PKESK key IDs or fingerprints
+// to the supplied public key. A match is informational only; it does not prove
+// that the container is encrypted to that key or that the key can decrypt it.
+func matchAdvertisedRecipient(recipientArmor string, recipients []recipientInfo) ([]string, string, error) {
 	publicKey, err := crypto.NewKeyFromArmored(strings.TrimSpace(recipientArmor))
 	if err != nil {
 		return nil, "", fmt.Errorf("parse recipient public key: %w", err)
@@ -184,22 +242,16 @@ func matchRecipient(recipientArmor string, recipients []recipientInfo) ([]string
 	for _, recipient := range recipients {
 		for _, candidate := range candidates {
 			matched := false
-			if recipient.Fingerprint != "" {
-				matched = strings.EqualFold(recipient.Fingerprint, candidate.fingerprint)
+			if recipient.AdvertisedFingerprint != "" {
+				matched = strings.EqualFold(recipient.AdvertisedFingerprint, candidate.fingerprint)
 			} else {
-				matched = recipient.KeyID == candidate.keyID
+				matched = recipient.AdvertisedKeyID == candidate.keyID
 			}
 			if matched && !seen[candidate.fingerprint] {
 				seen[candidate.fingerprint] = true
 				matches = append(matches, candidate.fingerprint)
 			}
 		}
-	}
-	if len(matches) == 0 {
-		return nil, primaryFingerprint, fmt.Errorf(
-			"container is not encrypted to the supplied recipient key (primary fingerprint %s)",
-			primaryFingerprint,
-		)
 	}
 	return matches, primaryFingerprint, nil
 }

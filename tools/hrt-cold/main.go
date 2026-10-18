@@ -228,7 +228,7 @@ func cmdDecrypt(args []string, stdout, stderr io.Writer) error {
 func cmdInspect(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("inspect", stderr)
 	inPath := fs.String("in", "", ".hrtb input")
-	recipientPath := fs.String("recipient", "", "optional armored public key used to show a full fingerprint")
+	recipientPath := fs.String("recipient", "", "optional armored public key to compare with advertised recipient key IDs (informational only)")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -249,13 +249,13 @@ func cmdInspect(args []string, stdout, stderr io.Writer) error {
 	}
 
 	var matched []string
-	var primaryFingerprint string
+	var suppliedFingerprint string
 	if *recipientPath != "" {
 		recipientArmor, err := readLimited(*recipientPath, maxKeyBytes)
 		if err != nil {
 			return err
 		}
-		matched, primaryFingerprint, err = matchRecipient(string(recipientArmor), recipients)
+		matched, suppliedFingerprint, err = matchAdvertisedRecipient(string(recipientArmor), recipients)
 		if err != nil {
 			return err
 		}
@@ -269,17 +269,19 @@ func cmdInspect(args []string, stdout, stderr io.Writer) error {
 	fmt.Fprintf(stdout, "payloadSHA256: %s\n", hex.EncodeToString(sum[:]))
 	fmt.Fprintf(stdout, "recipientCount: %d\n", len(recipients))
 	for _, recipient := range recipients {
-		fmt.Fprintf(stdout, "recipientKeyID: %016x\n", recipient.KeyID)
-		if recipient.Fingerprint != "" {
-			fmt.Fprintf(stdout, "recipientPacketFingerprint: %s\n", recipient.Fingerprint)
+		fmt.Fprintf(stdout, "advertisedRecipientKeyID: %016x\n", recipient.AdvertisedKeyID)
+		if recipient.AdvertisedFingerprint != "" {
+			fmt.Fprintf(stdout, "advertisedRecipientFingerprint: %s\n", recipient.AdvertisedFingerprint)
 		}
 	}
-	for _, fingerprint := range matched {
-		fmt.Fprintf(stdout, "recipientFingerprint: %s\n", fingerprint)
+	if suppliedFingerprint != "" {
+		fmt.Fprintf(stdout, "suppliedRecipientFingerprint: %s\n", suppliedFingerprint)
+		fmt.Fprintf(stdout, "advertisedRecipientMatchesSupplied: %t\n", len(matched) > 0)
+		for _, fingerprint := range matched {
+			fmt.Fprintf(stdout, "advertisedRecipientMatchFingerprint: %s\n", fingerprint)
+		}
 	}
-	if primaryFingerprint != "" {
-		fmt.Fprintf(stdout, "primaryFingerprint: %s\n", primaryFingerprint)
-	}
+	fmt.Fprintln(stdout, "recipientVerified: false")
 	fmt.Fprintln(stdout, "decrypted: false")
 	return nil
 }

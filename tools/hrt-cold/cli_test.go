@@ -5,12 +5,17 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/ProtonMail/go-crypto/openpgp/packet"
+	openpgp "github.com/ProtonMail/go-crypto/openpgp/v2"
 	"github.com/ProtonMail/gopenpgp/v3/crypto"
 )
 
@@ -112,6 +117,17 @@ func requireHexFingerprint(t *testing.T, fingerprint string) {
 	}
 }
 
+func requireHexKeyID(t *testing.T, keyID string) {
+	t.Helper()
+	decoded, err := hex.DecodeString(keyID)
+	if err != nil {
+		t.Fatalf("key ID is not hex: %q", keyID)
+	}
+	if len(decoded) != 8 {
+		t.Fatalf("key ID is not 8 bytes: %q", keyID)
+	}
+}
+
 func writeEncryptedContainer(t *testing.T, identity *testIdentity, plaintext []byte, path string) {
 	t.Helper()
 	publicArmor := string(readTestFile(t, identity.publicPath))
@@ -122,6 +138,157 @@ func writeEncryptedContainer(t *testing.T, identity *testIdentity, plaintext []b
 	if err := os.WriteFile(path, containerBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+type nopWriteCloser struct {
+	io.Writer
+}
+
+func (nopWriteCloser) Close() error { return nil }
+
+func literalPayload(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer, err := packet.SerializeLiteral(nopWriteCloser{&buffer}, true, "bundle.json", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write(readSyntheticBundle(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+
+func compressedPlaintextPayload(t *testing.T) []byte {
+	t.Helper()
+	var buffer bytes.Buffer
+	compressed, err := packet.SerializeCompressed(nopWriteCloser{&buffer}, packet.CompressionZIP, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer, err := packet.SerializeLiteral(compressed, true, "bundle.json", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write(readSyntheticBundle(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+
+func signedOnlyPayload(t *testing.T, identity *testIdentity) []byte {
+	t.Helper()
+	passphrase, err := readPassphrase(identity.passphrasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateKey, err := crypto.NewPrivateKeyFromArmored(
+		string(readTestFile(t, identity.privatePath)),
+		passphrase,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer privateKey.ClearPrivateParams()
+	var buffer bytes.Buffer
+	writer, err := openpgp.Sign(&buffer, openpgp.EntityList{privateKey.GetEntity()}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := writer.Write(readSyntheticBundle(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buffer.Bytes()
+}
+
+func encryptionKeyID(t *testing.T, identity *testIdentity) uint64 {
+	t.Helper()
+	publicKey, err := crypto.NewKeyFromArmored(string(readTestFile(t, identity.publicPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encryptionKey, ok := publicKey.GetEntity().EncryptionKey(time.Now(), nil)
+	if !ok {
+		t.Fatal("supplied key has no encryption key")
+	}
+	return encryptionKey.PublicKey.KeyId
+}
+
+func writeContainerPayload(t *testing.T, payload []byte, path string) {
+	t.Helper()
+	containerBytes, err := makeContainer(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, containerBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func firstPKESKPayloadParts(t *testing.T, containerPath string) (pkesk, remainder []byte) {
+	t.Helper()
+	parsed, err := parseContainer(readTestFile(t, containerPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := bytes.NewReader(parsed.Payload)
+	if _, err := packet.Read(reader); err != nil {
+		t.Fatal(err)
+	}
+	consumed := len(parsed.Payload) - reader.Len()
+	return parsed.Payload[:consumed], parsed.Payload[consumed:]
+}
+
+func rewriteFirstPKESKRecipient(t *testing.T, containerPath string, identity *testIdentity) []byte {
+	t.Helper()
+	parsed, err := parseContainer(readTestFile(t, containerPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := bytes.NewReader(parsed.Payload)
+	first, err := packet.Read(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encryptedKey, ok := first.(*packet.EncryptedKey)
+	if !ok {
+		t.Fatalf("first packet is %T, want *packet.EncryptedKey", first)
+	}
+	consumed := len(parsed.Payload) - reader.Len()
+
+	publicKey, err := crypto.NewKeyFromArmored(string(readTestFile(t, identity.publicPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encryptionKey, ok := publicKey.GetEntity().EncryptionKey(time.Now(), nil)
+	if !ok {
+		t.Fatal("supplied key has no encryption key")
+	}
+
+	encryptedKey.KeyId = encryptionKey.PublicKey.KeyId
+	if encryptedKey.Version == 6 && encryptedKey.KeyVersion != 0 {
+		encryptedKey.KeyVersion = encryptionKey.PublicKey.Version
+		encryptedKey.KeyFingerprint = append([]byte(nil), encryptionKey.PublicKey.Fingerprint...)
+	}
+	var rewritten bytes.Buffer
+	if err := encryptedKey.Serialize(&rewritten); err != nil {
+		t.Fatal(err)
+	}
+	payload := append(rewritten.Bytes(), parsed.Payload[consumed:]...)
+	containerBytes, err := makeContainer(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return containerBytes
 }
 
 func encryptSyntheticBundle(t *testing.T, identity *testIdentity, dir string) (bundlePath, containerPath string) {
@@ -316,10 +483,17 @@ func TestEncryptDecryptRoundTripAndInspect(t *testing.T) {
 	if outputValue(t, stdout, "recipientCount") != "1" {
 		t.Fatalf("unexpected recipient count: %s", stdout)
 	}
-	if outputValue(t, stdout, "primaryFingerprint") != identity.fingerprint {
-		t.Fatalf("unexpected primary fingerprint: %s", stdout)
+	requireHexKeyID(t, outputValue(t, stdout, "advertisedRecipientKeyID"))
+	if outputValue(t, stdout, "suppliedRecipientFingerprint") != identity.fingerprint {
+		t.Fatalf("unexpected supplied fingerprint: %s", stdout)
 	}
-	requireHexFingerprint(t, outputValue(t, stdout, "recipientFingerprint"))
+	if outputValue(t, stdout, "advertisedRecipientMatchesSupplied") != "true" {
+		t.Fatalf("supplied recipient did not match advertised key ID: %s", stdout)
+	}
+	requireHexFingerprint(t, outputValue(t, stdout, "advertisedRecipientMatchFingerprint"))
+	if outputValue(t, stdout, "recipientVerified") != "false" {
+		t.Fatalf("inspect must not claim recipient verification: %s", stdout)
+	}
 	if outputValue(t, stdout, "decrypted") != "false" {
 		t.Fatalf("inspect must not claim decryption: %s", stdout)
 	}
@@ -328,32 +502,179 @@ func TestEncryptDecryptRoundTripAndInspect(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("inspect without recipient failed with code %d: %s", code, stderr)
 	}
-	if !strings.Contains(stdout, "recipientKeyID:") {
-		t.Fatalf("inspect did not show a recipient key ID: %s", stdout)
+	if !strings.Contains(stdout, "advertisedRecipientKeyID:") {
+		t.Fatalf("inspect did not show an advertised recipient key ID: %s", stdout)
 	}
-	if strings.Contains(stdout, "primaryFingerprint:") || strings.Contains(stdout, "recipientFingerprint:") {
-		t.Fatalf("inspect claimed a fingerprint without a public key: %s", stdout)
+	if strings.Contains(stdout, "suppliedRecipientFingerprint:") ||
+		strings.Contains(stdout, "advertisedRecipientMatchesSupplied:") ||
+		strings.Contains(stdout, "recipientFingerprint:") {
+		t.Fatalf("inspect claimed a supplied fingerprint without a public key: %s", stdout)
+	}
+	if outputValue(t, stdout, "recipientVerified") != "false" {
+		t.Fatalf("inspect must not claim recipient verification: %s", stdout)
 	}
 	assertNoTempFiles(t, dir)
 }
 
-func TestInspectRejectsWrongRecipient(t *testing.T) {
+func TestInspectReportsWrongSuppliedRecipientAsUnverified(t *testing.T) {
 	dir := t.TempDir()
 	identity := newTestIdentity(t, dir)
 	_, containerPath := encryptSyntheticBundle(t, identity, dir)
 	otherDir := t.TempDir()
 	other := newTestIdentity(t, otherDir)
 
-	_, stderr, code := runCLI(t,
+	stdout, stderr, code := runCLI(t,
 		"inspect",
 		"--in", containerPath,
 		"--recipient", other.publicPath,
 	)
-	if code == 0 {
-		t.Fatal("inspect accepted a non-recipient public key")
+	if code != 0 {
+		t.Fatalf("inspect treated an informational recipient mismatch as an error: %d: %s", code, stderr)
 	}
-	if !strings.Contains(stderr, "not encrypted to the supplied recipient key") {
-		t.Fatalf("unexpected stderr: %s", stderr)
+	if outputValue(t, stdout, "advertisedRecipientMatchesSupplied") != "false" {
+		t.Fatalf("inspect reported a match for a non-recipient key: %s", stdout)
+	}
+	if outputValue(t, stdout, "suppliedRecipientFingerprint") != other.fingerprint {
+		t.Fatalf("unexpected supplied fingerprint: %s", stdout)
+	}
+	if outputValue(t, stdout, "recipientVerified") != "false" {
+		t.Fatalf("inspect must not claim recipient verification: %s", stdout)
+	}
+}
+
+func TestInspectDoesNotVerifyForgedRecipientKeyID(t *testing.T) {
+	dir := t.TempDir()
+	attacker := newTestIdentity(t, dir)
+	_, containerPath := encryptSyntheticBundle(t, attacker, dir)
+	victimDir := t.TempDir()
+	victim := newTestIdentity(t, victimDir)
+
+	forgedPath := filepath.Join(dir, "forged-recipient.hrtb")
+	if err := os.WriteFile(forgedPath, rewriteFirstPKESKRecipient(t, containerPath, victim), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout, stderr, code := runCLI(t,
+		"inspect",
+		"--in", forgedPath,
+		"--recipient", victim.publicPath,
+	)
+	if code != 0 {
+		t.Fatalf("inspect failed to read forged PKESK metadata: %d: %s", code, stderr)
+	}
+	if got := outputValue(t, stdout, "advertisedRecipientKeyID"); got != fmt.Sprintf("%016x", encryptionKeyID(t, victim)) {
+		t.Fatalf("advertised recipient key ID = %s, want victim encryption key", got)
+	}
+	if outputValue(t, stdout, "advertisedRecipientMatchesSupplied") != "true" {
+		t.Fatalf("forged PKESK key ID did not match supplied key: %s", stdout)
+	}
+	if outputValue(t, stdout, "recipientVerified") != "false" {
+		t.Fatalf("inspect claimed that an unauthenticated PKESK was verified: %s", stdout)
+	}
+
+	outputPath := filepath.Join(dir, "forged-recipient.json")
+	_, stderr, code = runCLI(t,
+		"decrypt",
+		"--private", victim.privatePath,
+		"--passphrase-file", victim.passphrasePath,
+		"--in", forgedPath,
+		"--out", outputPath,
+	)
+	if code == 0 {
+		t.Fatal("decrypt accepted a container with a forged PKESK key ID")
+	}
+	if !strings.Contains(stderr, "incorrect key") && !strings.Contains(stderr, "wrong key") {
+		t.Fatalf("unexpected forged-recipient decrypt error: %s", stderr)
+	}
+	requireMissing(t, outputPath)
+	assertNoTempFiles(t, dir)
+}
+
+func TestInspectRejectsMissingRecipientOrEncryptedPayload(t *testing.T) {
+	dir := t.TempDir()
+	identity := newTestIdentity(t, dir)
+	_, containerPath := encryptSyntheticBundle(t, identity, dir)
+	pkesk, encryptedPayload := firstPKESKPayloadParts(t, containerPath)
+
+	tests := []struct {
+		name    string
+		payload []byte
+		want    string
+	}{
+		{name: "no-recipient", payload: encryptedPayload, want: "no public-key recipient"},
+		{name: "no-encrypted-payload", payload: pkesk, want: "no encrypted data packet"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(dir, test.name+".hrtb")
+			writeContainerPayload(t, test.payload, path)
+
+			_, stderr, code := runCLI(t, "inspect", "--in", path)
+			if code == 0 {
+				t.Fatal("inspect accepted a container without a complete encrypted message")
+			}
+			if !strings.Contains(stderr, test.want) {
+				t.Fatalf("unexpected inspect error: %s", stderr)
+			}
+
+			outputPath := filepath.Join(dir, test.name+".json")
+			_, _, code = runCLI(t,
+				"decrypt",
+				"--private", identity.privatePath,
+				"--passphrase-file", identity.passphrasePath,
+				"--in", path,
+				"--out", outputPath,
+			)
+			if code == 0 {
+				t.Fatal("decrypt accepted a container without a complete encrypted message")
+			}
+			requireMissing(t, outputPath)
+			assertNoTempFiles(t, dir)
+		})
+	}
+}
+
+func TestDecryptRejectsUnencryptedOpenPGPMessages(t *testing.T) {
+	dir := t.TempDir()
+	identity := newTestIdentity(t, dir)
+	tests := []struct {
+		name    string
+		payload func(*testing.T) []byte
+	}{
+		{name: "literal", payload: literalPayload},
+		{name: "compressed-plaintext", payload: compressedPlaintextPayload},
+		{name: "signed-only", payload: func(t *testing.T) []byte { return signedOnlyPayload(t, identity) }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(dir, test.name+".hrtb")
+			writeContainerPayload(t, test.payload(t), path)
+
+			outputPath := filepath.Join(dir, test.name+".json")
+			_, stderr, code := runCLI(t,
+				"decrypt",
+				"--private", identity.privatePath,
+				"--passphrase-file", identity.passphrasePath,
+				"--in", path,
+				"--out", outputPath,
+			)
+			if code == 0 {
+				t.Fatal("decrypt accepted a plaintext or signed-only OpenPGP payload")
+			}
+			if !strings.Contains(stderr, "not an encrypted OpenPGP message") {
+				t.Fatalf("unexpected decrypt error: %s", stderr)
+			}
+			requireMissing(t, outputPath)
+
+			_, stderr, code = runCLI(t, "inspect", "--in", path)
+			if code == 0 {
+				t.Fatal("inspect accepted a plaintext or signed-only OpenPGP payload")
+			}
+			if !strings.Contains(stderr, "not an encrypted OpenPGP message") {
+				t.Fatalf("unexpected inspect error: %s", stderr)
+			}
+			assertNoTempFiles(t, dir)
+		})
 	}
 }
 
