@@ -1,0 +1,112 @@
+{
+  "format": "oyama-hrt-complete-backup",
+  "formatVersion": 1,
+  "createdAt": "2030-01-01T00:00:00.000Z",
+  "mode": "transfem",
+  "modes": {
+    "transfem": {
+      "events": [
+        {
+          "id": "tf-event-1",
+          "route": "injection",
+          "timeH": 1893456000,
+          "doseMG": 2.5,
+          "ester": "E2",
+          "extras": {},
+          "updatedAt": 1893456000000
+        }
+      ],
+      "labResults": [
+        {
+          "id": "tf-lab-1",
+          "timeH": 1893456000,
+          "concValue": 123.4,
+          "unit": "pg/ml",
+          "assay": "lcms",
+          "updatedAt": 1893456000000
+        }
+      ],
+      "doseTemplates": [
+        {
+          "id": "tf-template-1",
+          "name": "Synthetic template",
+          "route": "injection",
+          "ester": "E2",
+          "doseMG": 2,
+          "extras": {},
+          "createdAt": 1893456000000,
+          "updatedAt": 1893456000000
+        }
+      ],
+      "deletions": {
+        "events": {
+          "tf-deleted-event": 1893456000000
+        },
+        "labResults": {},
+        "doseTemplates": {}
+      },
+      "quickDoses": [
+        {
+          "id": "tf-quick-1",
+          "route": "gel",
+          "ester": "E2",
+          "value": 1.25,
+          "createdAt": 1893456000000
+        }
+      ],
+      "supplies": [
+        {
+          "id": "tf-supply-1",
+          "route": "injection",
+          "ester": "E2",
+          "pack": {
+            "kind": "vial",
+            "ml": 5,
+            "mgPerMl": 40
+          },
+          "count": 1,
+          "startedAt": 1893456000000
+        }
+      ],
+      "plan": [
+        {
+          "id": "tf-plan-1",
+          "route": "injection",
+          "ester": "E2",
+          "doseMG": 2,
+          "extras": {},
+          "everyDays": 3.5,
+          "timesPerDay": 1
+        }
+      ]
+    },
+    "transmasc": {
+      "events": [],
+      "labResults": [],
+      "doseTemplates": [],
+      "deletions": {
+        "events": {},
+        "labResults": {},
+        "doseTemplates": {}
+      },
+      "quickDoses": [],
+      "supplies": [],
+      "plan": []
+    }
+  },
+  "weight": 70,
+  "weightUpdatedAt": 1893456000000,
+  "pkParams": null,
+  "pkParamsUpdatedAt": 1893456000000,
+  "calibration": {
+    "method": "mipd",
+    "historyMode": "retrospective"
+  },
+  "preferences": {
+    "app-theme": "dark",
+    "hrt-lang": "en",
+    "app-show-prediction": true,
+    "app-hide-site-label": false,
+    "hrt-supply-lead-days": 14
+  }
+}
