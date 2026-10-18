@@ -311,3 +311,85 @@ change protection rules.
    category instead of aborting the category.
 4. Tools-side OpenPGP CLI/file behavior and its own test matrix.
 5. Browser/L3 test harness for export, preview, merge, and preference effects.
+
+## Website complete-backup security fixes (2026-10-19)
+
+- **Branch/worktree:** `agent/add-gpg-website` in
+  `/tmp/opencode/hrt-fix-website-p0`; base `32edc7068423916f8ab7cfa416ae7bf31d2f7609`.
+- **Fix commit:** `d4b47a9` — `fix: harden complete-backup merge against unsafe
+  tombstones and timestamps`.
+- **Files:** `src/utils/backupBundle.ts`, `src/utils/backupState.ts`,
+  `src/App.tsx`, `src/pages/ImportSettings.tsx`, `src/i18n/translations.ts`,
+  `tests/backupBundle.test.ts`.
+
+### Fixes
+
+- Incoming tombstones are bounded before use: timestamps beyond
+  `now + 5 minutes` are rejected, entries older than the existing 180-day sync
+  TTL are dropped, and each record kind is capped at
+  `TOMBSTONE_MAX_PER_KIND` (5000). Every rejected/expired/capped entry is
+  reported in the preview (`issues`, per-kind `deletionImpact.droppedIds`).
+- An incoming tombstone no longer deletes a local record whose `updatedAt` is
+  newer; the tombstone is skipped and the per-kind conflict is reported.
+  Tombstones for a record category blocked by validation are not applied.
+- A local tombstone newer than (or equal to) an incoming record prevents the
+  record from being restored and is not cleared. A strictly newer incoming
+  record clears the tombstone and both actions are reported.
+- Future `updatedAt`, `weightUpdatedAt`, and `pkParamsUpdatedAt` beyond the
+  5-minute skew allowance are rejected (category/scalar blocked); legitimate
+  older timestamps are preserved.
+- Complete-backup merge now builds all writes first, snapshots every target
+  key, and restores the snapshot if a write throws. If rollback itself fails,
+  the thrown message and UI copy say partial writes may have occurred. The
+  data layer makes no local-storage transaction claim.
+- Entry arrays reuse `MAX_IMPORT_ENTRIES` (20000). `timesPerDay` is finite and
+  bounded to 1..24; `everyDays` is finite and bounded to 1..3650; NaN and
+  Infinity are rejected.
+- Preview text now shows weight, PK parameter keys/values, calibration, and
+  per-kind deletion impact (counts plus ids where available). Calibration
+  overwrite has a separate explicit confirmation dialog. Equal-time scalar
+  values that differ are reported as conflicts and blocked instead of being
+  silently skipped.
+- Import settings copy now distinguishes regular record import (replaces) from
+  complete-backup import (merge only).
+- Credential and excluded-preference handling is unchanged: the allowlist still
+  excludes `auth_token`, `auth_user`, `weak_password`, `login_device_passes`,
+  `enc_key`, `app-auto-backup`, `app-dev-mode`, onboarding/site-notice flags,
+  and cosmetic settings.
+
+### Tests actually run
+
+- `npx tsc --noEmit` — pass.
+- `node node_modules/vitest/vitest.mjs run tests/backupBundle.test.ts` —
+  20/20 pass.
+- `node node_modules/vitest/vitest.mjs run` — 18 files pass; 397 passed,
+  4 expected fail (401 total).
+- `npm run build` — Vite production build pass (existing chunk-size warning
+  only).
+- `npx prettier --check` on changed source/test files — pass.
+- `npx eslint` on changed files — no errors; existing `any` warnings only.
+- `git diff --check` — pass.
+
+New synthetic cases cover: tombstone clock-skew/TTL/cap bounds, newer-local
+record protection, no resurrection from an older bundle, tombstone clearing by
+a newer record, future record/scalar timestamps, mid-write rollback, failed
+rollback partial-state reporting, plan numeric bounds, the 20000-entry cap,
+equal-time weight/PK conflicts, calibration overwrite preview, and preview
+deletion counts/ids.
+
+### Remaining limits
+
+- Rollback is an application-level snapshot/restore, not a `localStorage`
+  transaction. It is proven only for the in-memory `StorageLike` failure cases
+  in tests; quota, browser crash, or a storage that fails every write can still
+  leave partial state, which is why the UI says partial writes may have
+  occurred.
+- The bounds above apply to complete-backup import. The cloud sync merge path
+  (`src/utils/syncMerge.ts`) was not changed in this work item.
+- No browser/L3 end-to-end test, no Replace implementation, no OpenPGP/key/
+  passphrase work, and no schema, database, Worker, Docker, or License changes.
+- This checkpoint does not clear L3, production readiness, the License Gate, or
+  Docker, and it does not claim all-or-nothing restore beyond the tested
+  snapshot rollback.
+- Push status: this handoff update is committed after `d4b47a9`; the final
+  remote SHA is recorded at the checkpoint.
