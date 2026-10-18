@@ -275,6 +275,8 @@ export const TRANSLATIONS_BASE = {
         'import.complete_note':
             '完整备份是未加密的 JSON，包含记录、用品、方案、校准和设置。网站不会添加 OpenPGP 加密，也不处理私钥或口令；加密与解密请使用离线 Tools 流程。',
         'import.complete_merge_only': '完整备份导入只执行合并；替换全部数据尚未实现（BLOCKED）。',
+        'import.replace_or_merge_note':
+            '普通 JSON 或加密记录导入会替换这台设备上的记录。完整备份导入只执行合并，绝不会清空本地数据。',
         'import.bundle_preview_title': '导入完整备份？',
         'import.bundle_unencrypted_warning': '此文件未加密。',
         'import.bundle_created': '创建时间：',
@@ -287,11 +289,26 @@ export const TRANSLATIONS_BASE = {
         'import.bundle_merge_btn': '合并',
         'import.bundle_merge_note':
             '只合并可安全导入的类别；同一 ID 且没有可靠 updatedAt 时，该类别会中止。不会清空本地数据。',
-        'import.bundle_merge_success': '完整备份已合并：新增 {added}，更新 {updated}。',
+        'import.bundle_merge_success': '完整备份已合并：新增 {added}，更新 {updated}，删除 {removed}。',
         'import.bundle_merge_success_blocked':
-            '完整备份已合并：新增 {added}，更新 {updated}；以下类别已中止：{blocked}。',
-        'import.bundle_merge_failed': '完整备份导入失败，未写入任何数据。',
+            '完整备份已合并：新增 {added}，更新 {updated}，删除 {removed}；以下类别已中止：{blocked}。',
+        'import.bundle_merge_failed': '完整备份导入失败。已尽可能恢复原有数据；可能发生了部分写入。',
         'import.bundle_invalid': '这不是有效的完整备份文件。',
+        'import.bundle_deletions': '删除影响',
+        'import.bundle_weight_change': '体重',
+        'import.bundle_pk_change': 'PK 参数',
+        'import.bundle_calibration_change': '校准',
+        'import.bundle_calibration_confirm_title': '覆盖校准设置？',
+        'import.bundle_calibration_confirm':
+            '备份中的校准方法与历史模式与当前设置不同，这会改变 PK 估算的解释方式。只有确认后才会覆盖。',
+        'import.bundle_calibration_confirm_btn': '覆盖校准设置',
+        'import.bundle_action_added': '新增',
+        'import.bundle_action_updated': '更新',
+        'import.bundle_action_overwrite': '覆盖',
+        'import.bundle_action_skipped': '跳过（本地更新）',
+        'import.bundle_action_unchanged': '无变化',
+        'import.bundle_action_conflict': '冲突',
+        'import.bundle_action_blocked': '已中止',
         'import.bundle_unknown_version': '不支持的完整备份版本。',
         'import.bundle_mode_warning': '备份来源模式与当前模式不同；会按模式分别合并，不会切换当前模式。',
 
@@ -1169,6 +1186,8 @@ export const TRANSLATIONS_BASE = {
         'import.complete_note':
             'A complete backup is unencrypted JSON containing records, supplies, plan, calibration and settings. This website does not add OpenPGP encryption and does not handle private keys or passphrases; use the offline Tools workflow to encrypt or decrypt it.',
         'import.complete_merge_only': 'Complete-backup import merges only; replace-all is not implemented (BLOCKED).',
+        'import.replace_or_merge_note':
+            "A regular JSON or encrypted record import replaces this device's records. Complete-backup import merges only and never clears local data.",
         'import.bundle_preview_title': 'Import complete backup?',
         'import.bundle_unencrypted_warning': 'This file is not encrypted.',
         'import.bundle_created': 'Created:',
@@ -1181,11 +1200,27 @@ export const TRANSLATIONS_BASE = {
         'import.bundle_merge_btn': 'Merge',
         'import.bundle_merge_note':
             'Only categories that pass validation are merged. A category with a same-id record and no reliable updatedAt is blocked. Local data is never cleared.',
-        'import.bundle_merge_success': 'Complete backup merged: {added} added, {updated} updated.',
+        'import.bundle_merge_success': 'Complete backup merged: {added} added, {updated} updated, {removed} removed.',
         'import.bundle_merge_success_blocked':
-            'Complete backup merged: {added} added, {updated} updated; blocked categories: {blocked}.',
-        'import.bundle_merge_failed': 'Complete backup import failed; no data was written.',
+            'Complete backup merged: {added} added, {updated} updated, {removed} removed; blocked categories: {blocked}.',
+        'import.bundle_merge_failed':
+            'Complete backup import failed. Existing data was restored where possible; partial writes may have occurred.',
         'import.bundle_invalid': 'This is not a valid complete backup file.',
+        'import.bundle_deletions': 'Deletion impact',
+        'import.bundle_weight_change': 'Weight',
+        'import.bundle_pk_change': 'PK parameters',
+        'import.bundle_calibration_change': 'Calibration',
+        'import.bundle_calibration_confirm_title': 'Overwrite calibration settings?',
+        'import.bundle_calibration_confirm':
+            'The backup contains different calibration settings. This changes how PK estimates are interpreted; the current settings are overwritten only if you confirm.',
+        'import.bundle_calibration_confirm_btn': 'Overwrite calibration',
+        'import.bundle_action_added': 'added',
+        'import.bundle_action_updated': 'updated',
+        'import.bundle_action_overwrite': 'overwrite',
+        'import.bundle_action_skipped': 'skipped (local is newer)',
+        'import.bundle_action_unchanged': 'unchanged',
+        'import.bundle_action_conflict': 'conflict',
+        'import.bundle_action_blocked': 'blocked',
         'import.bundle_unknown_version': 'Unsupported complete backup version.',
         'import.bundle_mode_warning':
             'The backup was made in a different mode; each mode is merged separately and the current mode is not switched.',

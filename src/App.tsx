@@ -336,7 +336,21 @@ const AppContent = () => {
         return `${mode}: events ${c.events}, labs ${c.labResults}, templates ${c.doseTemplates}, quick doses ${c.quickDoses}, supplies ${c.supplies}, plan ${c.plan}, deletions ${c.deletions}`;
     };
 
-    /** Counts and conflicts, shown before a complete bundle is merged. */
+    const actionLabel = (action: string): string => t(`import.bundle_action_${action}`);
+
+    const pkChangeSummary = (current: unknown, incoming: unknown): string => {
+        const currentValues = (current ?? {}) as Record<string, unknown>;
+        const incomingValues = (incoming ?? {}) as Record<string, unknown>;
+        const keys = new Set([...Object.keys(currentValues), ...Object.keys(incomingValues)]);
+        const changed = [...keys].filter(key => currentValues[key] !== incomingValues[key]);
+        if (changed.length === 0) return t('import.bundle_action_unchanged');
+        return changed
+            .slice(0, 8)
+            .map(key => `${key}: ${String(currentValues[key] ?? '—')} -> ${String(incomingValues[key] ?? '—')}`)
+            .join(', ');
+    };
+
+    /** Counts, deletion ids and scalar changes shown before a complete bundle is merged. */
     const describeCompleteBackupPreview = (preview: CompleteBackupPreview): string => {
         const lines = [t('import.bundle_unencrypted_warning')];
         if (preview.createdAt) lines.push(`${t('import.bundle_created')} ${preview.createdAt}`);
@@ -344,6 +358,50 @@ const AppContent = () => {
         if (preview.sourceMode && preview.sourceMode !== mode) lines.push(t('import.bundle_mode_warning'));
         lines.push(bundleCountLine(preview, 'transfem'));
         lines.push(bundleCountLine(preview, 'transmasc'));
+
+        const deletionLines = preview.deletionImpact.filter(
+            impact =>
+                impact.incoming > 0 ||
+                impact.removedLocal > 0 ||
+                impact.protectedIds.length > 0 ||
+                impact.droppedIds.length > 0,
+        );
+        if (deletionLines.length) {
+            lines.push(`${t('import.bundle_deletions')}:`);
+            for (const impact of deletionLines) {
+                let line = `  ${impact.mode}.${impact.kind}: ${impact.incoming} incoming, ${impact.removedLocal} local removed`;
+                if (impact.removedIds.length) line += ` (${impact.removedIds.join(', ')})`;
+                if (impact.protectedIds.length) line += `; kept local ${impact.protectedIds.join(', ')}`;
+                if (impact.droppedIds.length) line += `; rejected ${impact.droppedIds.join(', ')}`;
+                lines.push(line);
+            }
+        }
+
+        if (preview.scalars.weight) {
+            const change = preview.scalars.weight;
+            lines.push(
+                `${t('import.bundle_weight_change')}: ${change.current ?? '—'} -> ${change.incoming} (${actionLabel(
+                    change.action,
+                )})`,
+            );
+        }
+        if (preview.scalars.pkParams) {
+            const change = preview.scalars.pkParams;
+            lines.push(
+                `${t('import.bundle_pk_change')}: ${pkChangeSummary(change.current, change.incoming)} (${actionLabel(
+                    change.action,
+                )})`,
+            );
+        }
+        if (preview.scalars.calibration) {
+            const change = preview.scalars.calibration;
+            lines.push(
+                `${t('import.bundle_calibration_change')}: ${change.current.method}/${change.current.historyMode} -> ${
+                    change.incoming.method
+                }/${change.incoming.historyMode} (${actionLabel(change.action)})`,
+            );
+        }
+
         if (preview.conflicts.length) lines.push(`${t('import.bundle_conflicts')}:\n${preview.conflicts.join('\n')}`);
         if (preview.blocked.length) lines.push(`${t('import.bundle_blocked')}: ${preview.blocked.join(', ')}`);
         if (preview.issues.length) lines.push(`${t('import.bundle_issues')}: ${preview.issues.join('; ')}`);
@@ -387,6 +445,7 @@ const AppContent = () => {
                     )
                         .replace('{added}', String(result.added))
                         .replace('{updated}', String(result.updated))
+                        .replace('{removed}', String(result.removed))
                         .replace('{blocked}', result.blocked.join(', '));
                     showDialog('alert', message);
                     resolve(true);
@@ -396,7 +455,21 @@ const AppContent = () => {
                     resolve(false);
                 }
             };
-            showDialog('confirm', describeCompleteBackupPreview(preview), run, {
+            const confirmMerge = () => {
+                if (preview.scalars.calibration?.action !== 'overwrite') {
+                    run();
+                    return;
+                }
+                // Calibration changes how PK estimates are interpreted. It gets
+                // its own explicit confirmation instead of riding on the merge.
+                showDialog('confirm', t('import.bundle_calibration_confirm'), run, {
+                    danger: true,
+                    title: t('import.bundle_calibration_confirm_title'),
+                    confirmLabel: t('import.bundle_calibration_confirm_btn'),
+                    onCancel: () => resolve(false),
+                });
+            };
+            showDialog('confirm', describeCompleteBackupPreview(preview), confirmMerge, {
                 title: t('import.bundle_preview_title'),
                 confirmLabel: t('import.bundle_merge_btn'),
                 onCancel: () => resolve(false),

@@ -12,14 +12,7 @@ import {
     sanitizePKParams,
     isPlausibleBodyWeightKG,
 } from '../../logic';
-import {
-    MODE_KEYS,
-    ModeKey,
-    SyncState,
-    Tombstones,
-    pruneTombstones,
-    sanitizeTombstones,
-} from './syncMerge';
+import { MODE_KEYS, ModeKey, SyncState, Tombstones, pruneTombstones, sanitizeTombstones } from './syncMerge';
 
 /** Minimal storage surface used by the pure backup helpers. */
 export interface StorageLike {
@@ -61,12 +54,15 @@ export interface ExportPayload {
     mode: ModeKey;
     weight: number;
     weightUpdatedAt?: number;
-    modes: Record<ModeKey, {
-        events: DoseEvent[];
-        labResults: LabResult[];
-        doseTemplates: DoseTemplate[];
-        deletions: Tombstones;
-    }>;
+    modes: Record<
+        ModeKey,
+        {
+            events: DoseEvent[];
+            labResults: LabResult[];
+            doseTemplates: DoseTemplate[];
+            deletions: Tombstones;
+        }
+    >;
     events: DoseEvent[];
     labResults: LabResult[];
     doseTemplates: DoseTemplate[];
@@ -85,11 +81,10 @@ export interface AppliedSyncedState {
     pkParams?: PKCustomParams | null;
 }
 
-const MAX_IMPORT_ENTRIES = 20000;
+export const MAX_IMPORT_ENTRIES = 20000;
 const DRUG_CODE = /^[A-Za-z0-9_]{1,24}$/;
 
-export const isDrugCode = (v: unknown): v is Ester =>
-    typeof v === 'string' && DRUG_CODE.test(v);
+export const isDrugCode = (v: unknown): v is Ester => typeof v === 'string' && DRUG_CODE.test(v);
 
 /** Carry a record's edit stamp through sanitising; absent or junk becomes undefined. */
 export const keepStamp = (raw: any): number | undefined => {
@@ -100,17 +95,10 @@ export const keepStamp = (raw: any): number | undefined => {
 export const nsFor = (owner: string, suffix: string): string =>
     owner === 'local' ? `hrt-${suffix}` : `hrt-u${owner}-${suffix}`;
 
-export const modeKeyFor = (
-    owner: string,
-    mode: ModeKey,
-    suffix: string,
-): string => nsFor(owner, mode === 'transmasc' ? `masc-${suffix}` : suffix);
+export const modeKeyFor = (owner: string, mode: ModeKey, suffix: string): string =>
+    nsFor(owner, mode === 'transmasc' ? `masc-${suffix}` : suffix);
 
-export const loadJSONFromStorage = <T>(
-    storage: StorageLike,
-    key: string,
-    fallback: T,
-): T => {
+export const loadJSONFromStorage = <T>(storage: StorageLike, key: string, fallback: T): T => {
     try {
         const s = storage.getItem(key);
         return s ? (JSON.parse(s) as T) : fallback;
@@ -119,14 +107,8 @@ export const loadJSONFromStorage = <T>(
     }
 };
 
-export const readTombstonesFromStorage = (
-    storage: StorageLike,
-    owner: string,
-    mode: ModeKey,
-): Tombstones =>
-    sanitizeTombstones(
-        loadJSONFromStorage<unknown>(storage, modeKeyFor(owner, mode, 'deletions'), null),
-    );
+export const readTombstonesFromStorage = (storage: StorageLike, owner: string, mode: ModeKey): Tombstones =>
+    sanitizeTombstones(loadJSONFromStorage<unknown>(storage, modeKeyFor(owner, mode, 'deletions'), null));
 
 export const writeTombstonesToStorage = (
     storage: StorageLike,
@@ -135,10 +117,7 @@ export const writeTombstonesToStorage = (
     next: Tombstones,
     now = Date.now(),
 ): void => {
-    storage.setItem(
-        modeKeyFor(owner, mode, 'deletions'),
-        JSON.stringify(pruneTombstones(next, now)),
-    );
+    storage.setItem(modeKeyFor(owner, mode, 'deletions'), JSON.stringify(pruneTombstones(next, now)));
 };
 
 export const sanitizeImportedEvents = (raw: any): DoseEvent[] => {
@@ -228,11 +207,7 @@ export const buildExportPayloadFromStorage = (
     const readMode = (m: ModeKey) => ({
         events: loadJSONFromStorage<DoseEvent[]>(storage, modeKeyFor(owner, m, 'events'), []),
         labResults: loadJSONFromStorage<LabResult[]>(storage, modeKeyFor(owner, m, 'lab-results'), []),
-        doseTemplates: loadJSONFromStorage<DoseTemplate[]>(
-            storage,
-            modeKeyFor(owner, m, 'dose-templates'),
-            [],
-        ),
+        doseTemplates: loadJSONFromStorage<DoseTemplate[]>(storage, modeKeyFor(owner, m, 'dose-templates'), []),
         deletions: readTombstonesFromStorage(storage, owner, m),
     });
     const modes = {
@@ -251,8 +226,7 @@ export const buildExportPayloadFromStorage = (
         meta: { version: 2, exportedAt },
         mode: activeMode,
         weight: active.weight,
-        weightUpdatedAt:
-            Number(storage.getItem(nsFor(owner, 'weight-at'))) || undefined,
+        weightUpdatedAt: Number(storage.getItem(nsFor(owner, 'weight-at'))) || undefined,
         modes,
         // Flat v1-compatible fields mirror the currently active mode.
         events: active.events,
@@ -260,8 +234,7 @@ export const buildExportPayloadFromStorage = (
         doseTemplates: active.doseTemplates,
         // Explicitly null when the user cleared them.
         pkParams: active.pkParams ?? null,
-        pkParamsUpdatedAt:
-            Number(storage.getItem(nsFor(owner, 'pk-params-at'))) || undefined,
+        pkParamsUpdatedAt: Number(storage.getItem(nsFor(owner, 'pk-params-at'))) || undefined,
     };
 };
 
@@ -286,18 +259,9 @@ export const applySyncedStateToStorage = (
 
     for (const block of clean) {
         writeTombstonesToStorage(storage, owner, block.m, block.deletions, now);
-        storage.setItem(
-            modeKeyFor(owner, block.m, 'events'),
-            JSON.stringify(block.events),
-        );
-        storage.setItem(
-            modeKeyFor(owner, block.m, 'lab-results'),
-            JSON.stringify(block.labResults),
-        );
-        storage.setItem(
-            modeKeyFor(owner, block.m, 'dose-templates'),
-            JSON.stringify(block.doseTemplates),
-        );
+        storage.setItem(modeKeyFor(owner, block.m, 'events'), JSON.stringify(block.events));
+        storage.setItem(modeKeyFor(owner, block.m, 'lab-results'), JSON.stringify(block.labResults));
+        storage.setItem(modeKeyFor(owner, block.m, 'dose-templates'), JSON.stringify(block.doseTemplates));
     }
 
     const active = clean.find(block => block.m === activeMode);

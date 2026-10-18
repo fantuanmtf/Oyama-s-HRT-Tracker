@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PK_PARAMS, Ester, Route, type PKCustomParams } from '../logic';
 import {
+    ALLOWED_CLOCK_SKEW_MS,
     COMPLETE_BACKUP_FORMAT,
     COMPLETE_BACKUP_FORMAT_VERSION,
+    PARTIAL_WRITE_MESSAGE,
+    PLAN_EVERY_DAYS_MAX,
+    PLAN_TIMES_PER_DAY_MAX,
     buildCompleteBackupBundleFromStorage,
     inspectCompleteBackupBundle,
     mergeCompleteBackupBundleToStorage,
@@ -12,13 +16,14 @@ import {
     type CompleteBackupBundle,
     type CompleteBackupContext,
 } from '../src/utils/backupBundle';
-import { modeKeyFor, type StorageLike } from '../src/utils/backupState';
-import { type ModeKey } from '../src/utils/syncMerge';
+import { MAX_IMPORT_ENTRIES, modeKeyFor, type StorageLike } from '../src/utils/backupState';
+import { TOMBSTONE_MAX_PER_KIND, TOMBSTONE_TTL_MS, type ModeKey } from '../src/utils/syncMerge';
 
 /** Synthetic values only. No fixture contains real health data or secrets. */
 const OWNER = 'local';
 const CREATED_AT = '2030-01-01T00:00:00.000Z';
-const TOMBSTONE_AT = 123;
+const NOW = Date.UTC(2030, 0, 2);
+const TOMBSTONE_AT = NOW - 60_000;
 
 class MemoryStorage implements StorageLike {
     readonly map = new Map<string, string>();
@@ -35,6 +40,28 @@ class MemoryStorage implements StorageLike {
         return JSON.stringify([...this.map.entries()].sort(([a], [b]) => a.localeCompare(b)));
     }
 }
+
+/** Fails selected setItem calls so a mid-import write error can be tested. */
+class FlakyStorage extends MemoryStorage {
+    private calls = 0;
+    constructor(
+        private readonly failAtCall: number,
+        private readonly failForever = false,
+    ) {
+        super();
+    }
+    override setItem(key: string, value: string): void {
+        this.calls++;
+        if (this.failAtCall === this.calls || (this.failForever && this.calls > this.failAtCall)) {
+            throw new Error('synthetic storage write failure');
+        }
+        super.setItem(key, value);
+    }
+}
+
+const copyInto = (target: MemoryStorage, source: MemoryStorage): void => {
+    for (const [key, value] of source.map) target.map.set(key, value);
+};
 
 const key = (mode: ModeKey, suffix: string) => modeKeyFor(OWNER, mode, suffix);
 
@@ -182,7 +209,7 @@ const context = (
     storage: MemoryStorage,
     mode: ModeKey = 'transfem',
     active: CompleteBackupActive = activeFrom(storage, mode),
-): CompleteBackupContext => ({ storage, owner: OWNER, mode, active });
+): CompleteBackupContext => ({ storage, owner: OWNER, mode, active, now: NOW });
 
 const build = (storage: MemoryStorage, mode: ModeKey = 'transfem'): CompleteBackupBundle =>
     buildCompleteBackupBundleFromStorage(storage, OWNER, mode, activeFrom(storage, mode), CREATED_AT);
@@ -505,5 +532,245 @@ describe('complete backup bundle data layer', () => {
         expect(result.ok).toBe(false);
         expect(result.errors.join(' ')).toContain('Unsupported backup format version');
         expect(storage.map.size).toBe(0);
+    });
+
+    it('bounds incoming tombstones by clock skew, TTL and per-kind cap with reports', () => {
+        const bundle = build(seed());
+        bundle.modes.transfem.deletions = {
+            events: {
+                future: NOW + ALLOWED_CLOCK_SKEW_MS + 1,
+                expired: NOW - TOMBSTONE_TTL_MS - 1,
+                valid: NOW - 1_000,
+            },
+            labResults: {},
+            doseTemplates: {},
+        };
+
+        const preview = inspectCompleteBackupBundle(bundle, context(new MemoryStorage()));
+        expect(preview.issues.join(' ')).toContain('newer than the allowed clock skew');
+        expect(preview.issues.join(' ')).toContain('older than the 180-day TTL');
+        const impact = preview.deletionImpact.find(item => item.mode === 'transfem' && item.kind === 'events');
+        expect(impact).toMatchObject({ incoming: 3, accepted: 1, removedLocal: 0 });
+        expect(impact?.droppedIds.sort()).toEqual(['expired', 'future']);
+
+        const target = new MemoryStorage();
+        mergeCompleteBackupBundleToStorage(bundle, context(target));
+        const stored = JSON.parse(target.getItem(key('transfem', 'deletions'))!) as {
+            events: Record<string, number>;
+        };
+        expect(Object.keys(stored.events)).toEqual(['valid']);
+
+        const capped = build(seed());
+        const many: Record<string, number> = {};
+        for (let i = 0; i <= TOMBSTONE_MAX_PER_KIND; i++) many[`t${i}`] = NOW - 1 - i;
+        capped.modes.transfem.deletions = { events: many, labResults: {}, doseTemplates: {} };
+        const cappedPreview = inspectCompleteBackupBundle(capped, context(new MemoryStorage()));
+        expect(cappedPreview.issues.join(' ')).toContain(`${TOMBSTONE_MAX_PER_KIND}-per-kind cap`);
+        const cappedImpact = cappedPreview.deletionImpact.find(
+            item => item.mode === 'transfem' && item.kind === 'events',
+        );
+        expect(cappedImpact?.incoming).toBe(TOMBSTONE_MAX_PER_KIND + 1);
+        expect(cappedImpact?.accepted).toBe(TOMBSTONE_MAX_PER_KIND);
+        expect(cappedImpact?.droppedIds).toEqual([`t${TOMBSTONE_MAX_PER_KIND}`]);
+
+        const cappedTarget = new MemoryStorage();
+        mergeCompleteBackupBundleToStorage(capped, context(cappedTarget));
+        const cappedStored = JSON.parse(cappedTarget.getItem(key('transfem', 'deletions'))!) as {
+            events: Record<string, number>;
+        };
+        expect(Object.keys(cappedStored.events)).toHaveLength(TOMBSTONE_MAX_PER_KIND);
+        expect(cappedStored.events.t0).toBe(NOW - 1);
+        expect(cappedStored.events[`t${TOMBSTONE_MAX_PER_KIND}`]).toBeUndefined();
+    });
+
+    it('does not let a tombstone delete a local record whose updatedAt is newer', () => {
+        const bundle = build(seed());
+        bundle.modes.transfem.deletions = {
+            events: { newer: NOW - 1_000, older: NOW - 1_000 },
+            labResults: {},
+            doseTemplates: {},
+        };
+        const local = new MemoryStorage();
+        local.setItem(
+            key('transfem', 'events'),
+            JSON.stringify([event('newer', { updatedAt: NOW - 500 }), event('older', { updatedAt: NOW - 2_000 })]),
+        );
+        local.setItem(key('transfem', 'deletions'), JSON.stringify({ events: {}, labResults: {}, doseTemplates: {} }));
+
+        const preview = inspectCompleteBackupBundle(bundle, context(local));
+        expect(preview.conflicts.join(' ')).toContain('local record newer is newer than the incoming tombstone');
+        expect(preview.deletionImpact.find(item => item.kind === 'events')).toMatchObject({
+            incoming: 2,
+            accepted: 1,
+            removedLocal: 1,
+            removedIds: ['older'],
+            protectedIds: ['newer'],
+        });
+
+        mergeCompleteBackupBundleToStorage(bundle, context(local));
+        const events = JSON.parse(local.getItem(key('transfem', 'events'))!) as { id: string }[];
+        expect(events.map(item => item.id)).toContain('newer');
+        expect(events.map(item => item.id)).not.toContain('older');
+        const tombstones = JSON.parse(local.getItem(key('transfem', 'deletions'))!) as {
+            events: Record<string, number>;
+        };
+        expect(tombstones.events.newer).toBeUndefined();
+        expect(tombstones.events.older).toBe(NOW - 1_000);
+    });
+
+    it('does not resurrect a record hidden by a newer local tombstone, and clears an older one', () => {
+        const local = new MemoryStorage();
+        local.setItem(key('transfem', 'events'), JSON.stringify([]));
+        local.setItem(
+            key('transfem', 'deletions'),
+            JSON.stringify({ events: { old: NOW - 1_000, revived: NOW - 1_000 }, labResults: {}, doseTemplates: {} }),
+        );
+
+        const bundle = build(seed());
+        bundle.modes.transfem.events = [
+            event('old', { updatedAt: NOW - 2_000 }),
+            event('revived', { updatedAt: NOW - 500 }),
+        ];
+        bundle.modes.transfem.labResults = [];
+        bundle.modes.transfem.doseTemplates = [];
+        bundle.modes.transfem.deletions = { events: {}, labResults: {}, doseTemplates: {} };
+
+        const preview = inspectCompleteBackupBundle(bundle, context(local));
+        expect(preview.conflicts.join(' ')).toContain('hidden by a local deletion');
+        expect(preview.conflicts.join(' ')).toContain('tombstone cleared');
+
+        const result = mergeCompleteBackupBundleToStorage(bundle, context(local));
+        const events = JSON.parse(local.getItem(key('transfem', 'events'))!) as { id: string }[];
+        expect(events.map(item => item.id)).toEqual(['revived']);
+        const tombstones = JSON.parse(local.getItem(key('transfem', 'deletions'))!) as {
+            events: Record<string, number>;
+        };
+        expect(tombstones.events.old).toBe(NOW - 1_000);
+        expect(tombstones.events.revived).toBeUndefined();
+        expect(result.applied).toContain('transfem.events');
+    });
+
+    it('rejects future updatedAt, weight and pkParams timestamps beyond the allowed skew', () => {
+        const future = NOW + ALLOWED_CLOCK_SKEW_MS + 1;
+
+        const eventBundle = build(seed());
+        eventBundle.modes.transfem.events![0].updatedAt = future;
+        const eventPreview = inspectCompleteBackupBundle(eventBundle, context(new MemoryStorage()));
+        expect(eventPreview.blocked).toContain('transfem.events');
+        expect(eventPreview.issues.join(' ')).toContain('future beyond the allowed clock skew');
+
+        const scalarBundle = build(seed());
+        scalarBundle.weightUpdatedAt = future;
+        scalarBundle.pkParamsUpdatedAt = future;
+        const scalarPreview = inspectCompleteBackupBundle(scalarBundle, context(new MemoryStorage()));
+        expect(scalarPreview.blocked).toEqual(expect.arrayContaining(['weight', 'pkParams']));
+        expect(scalarPreview.scalars.weight?.action).toBe('blocked');
+        expect(scalarPreview.scalars.pkParams?.action).toBe('blocked');
+
+        const target = seed();
+        mergeCompleteBackupBundleToStorage(eventBundle, context(target));
+        expect(JSON.parse(target.getItem(key('transfem', 'events'))!)[0].updatedAt).toBe(1_000);
+    });
+
+    it('rolls back every targeted key when a write throws mid-merge', () => {
+        const source = seed();
+        const storage = new FlakyStorage(3);
+        copyInto(storage, source);
+        const before = storage.snapshot();
+
+        expect(() => mergeCompleteBackupBundleToStorage(build(source), context(storage))).toThrow(
+            'synthetic storage write failure',
+        );
+        expect(storage.snapshot()).toBe(before);
+    });
+
+    it('reports partial writes when the rollback itself cannot restore the snapshot', () => {
+        const source = seed();
+        const storage = new FlakyStorage(1, true);
+        copyInto(storage, source);
+
+        expect(() => mergeCompleteBackupBundleToStorage(build(source), context(storage))).toThrow(
+            PARTIAL_WRITE_MESSAGE,
+        );
+    });
+
+    it('bounds plan timesPerDay and everyDays and rejects non-finite values', () => {
+        const cases: Record<string, unknown>[] = [
+            { timesPerDay: Number.NaN },
+            { timesPerDay: Number.POSITIVE_INFINITY },
+            { timesPerDay: 0 },
+            { timesPerDay: PLAN_TIMES_PER_DAY_MAX + 1 },
+            { everyDays: Number.NaN },
+            { everyDays: Number.POSITIVE_INFINITY },
+            { everyDays: 0 },
+            { everyDays: PLAN_EVERY_DAYS_MAX + 1 },
+        ];
+        for (const overrides of cases) {
+            const bundle = build(seed());
+            bundle.modes.transfem.plan = [plan('bad-plan', overrides)];
+            const preview = inspectCompleteBackupBundle(bundle, context(new MemoryStorage()));
+            expect(preview.blocked).toContain('transfem.plan');
+            expect(preview.issues.join(' ')).toMatch(/everyDays|timesPerDay/);
+        }
+
+        const valid = build(seed());
+        valid.modes.transfem.plan = [
+            plan('max-plan', { everyDays: PLAN_EVERY_DAYS_MAX, timesPerDay: PLAN_TIMES_PER_DAY_MAX }),
+        ];
+        const validPreview = inspectCompleteBackupBundle(valid, context(new MemoryStorage()));
+        expect(validPreview.blocked).not.toContain('transfem.plan');
+    });
+
+    it('rejects an array above the shared import entry cap', () => {
+        const bundle = build(seed());
+        bundle.modes.transfem.events = Array.from({ length: MAX_IMPORT_ENTRIES + 1 }, (_, index) =>
+            event(`bulk-${index}`),
+        );
+        const preview = inspectCompleteBackupBundle(bundle, context(new MemoryStorage()));
+        expect(preview.blocked).toContain('transfem.events');
+        expect(preview.issues.join(' ')).toContain(`${MAX_IMPORT_ENTRIES}-entry import limit`);
+    });
+
+    it('reports equal-time scalar conflicts instead of silently skipping them', () => {
+        const bundle = build(seed());
+        bundle.weightUpdatedAt = 2222;
+
+        const weightLocal = new MemoryStorage();
+        weightLocal.setItem('hrt-weight', '80');
+        weightLocal.setItem('hrt-weight-at', '2222');
+        const weightPreview = inspectCompleteBackupBundle(bundle, context(weightLocal));
+        expect(weightPreview.scalars.weight).toMatchObject({
+            action: 'conflict',
+            current: 80,
+            incoming: 70,
+        });
+        expect(weightPreview.conflicts.join(' ')).toContain('weight has equal updatedAt but different content');
+        expect(weightPreview.blocked).toContain('weight');
+        mergeCompleteBackupBundleToStorage(bundle, context(weightLocal));
+        expect(weightLocal.getItem('hrt-weight')).toBe('80');
+
+        const pkLocal = new MemoryStorage();
+        pkLocal.setItem('hrt-pk-params', JSON.stringify({ ...DEFAULT_PK_PARAMS, e2_kClear: 0.11 }));
+        pkLocal.setItem('hrt-pk-params-at', '2222');
+        const pkPreview = inspectCompleteBackupBundle(bundle, context(pkLocal));
+        expect(pkPreview.scalars.pkParams?.action).toBe('conflict');
+        expect(pkPreview.conflicts.join(' ')).toContain('pkParams has equal updatedAt but different content');
+        expect(pkPreview.blocked).toContain('pkParams');
+    });
+
+    it('previews calibration overwrite and applies it only through the explicit merge action', () => {
+        const bundle = build(seed());
+        const preview = inspectCompleteBackupBundle(bundle, context(new MemoryStorage()));
+        expect(preview.scalars.calibration).toMatchObject({
+            action: 'overwrite',
+            current: { method: 'mipd', historyMode: 'retrospective' },
+            incoming: { method: 'ekf', historyMode: 'forward' },
+        });
+
+        const target = new MemoryStorage();
+        const result = mergeCompleteBackupBundleToStorage(bundle, context(target));
+        expect(result.calibration).toEqual({ method: 'ekf', historyMode: 'forward' });
+        expect(target.getItem('hrt-cal-method')).toBe('ekf');
+        expect(target.getItem('hrt-cal-history-mode')).toBe('forward');
     });
 });

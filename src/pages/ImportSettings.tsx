@@ -7,7 +7,7 @@ import ImportSection from '../components/ImportSection';
 interface ImportSettingsProps {
     onImportJson: (text: string) => boolean | Promise<boolean>;
     onBack: () => void;
-    /** Opens Export, so a backup can be made before an import replaces things. */
+    /** Opens Export, so a backup can be made before a regular import replaces things. */
     onNavigateToExport?: () => void;
 }
 
@@ -20,10 +20,11 @@ const ImportSettings: React.FC<ImportSettingsProps> = ({ onImportJson, onBack, o
 
             <div className={PAGE_COLUMN}>
                 {/* Said before a file is chosen, not only in the confirm after:
-                    an import replaces, it doesn't add, and the way to keep what
-                    is here is to export it first. */}
+                    a regular record import replaces, while a complete-backup
+                    import merges only. The way to keep what is here is to
+                    export it first. */}
                 <div className="callout mt-1 mb-2">
-                    {t('import.replace_note')}
+                    {t('import.replace_or_merge_note')}
                     {onNavigateToExport && (
                         <>
                             {' '}
