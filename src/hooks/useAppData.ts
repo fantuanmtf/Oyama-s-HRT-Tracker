@@ -1,10 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { ShowDialog } from '../contexts/DialogContext';
-import { v4 as uuidv4 } from 'uuid';
 import {
     DoseEvent,
-    Route,
-    Ester,
     SimulationResult,
     runSimulation,
     interpolateConcentration_E2,
@@ -15,16 +12,9 @@ import {
     CalibrationMethod,
     CalibrationHistoryMode,
     normalizeCalibrationMethod,
-    isTestosteroneEster,
-    isT_LabUnit,
     PKCustomParams,
     applyPKOverrides,
     sanitizePKParams,
-    BODY_WEIGHT_KG_MIN,
-    BODY_WEIGHT_KG_MAX,
-    DOSE_MG_MAX,
-    EVENT_TIME_H_MIN,
-    EVENT_TIME_H_MAX,
 } from '../../logic';
 import { createDayLabelFormatter, toDayKey } from '../utils/helpers';
 import { detectRegimens, dosesAhead, normalizeSupply, Supply } from '../utils/regimen';
@@ -35,11 +25,9 @@ import {
     applySyncedStateToStorage,
     buildExportPayloadFromStorage,
     readTombstonesFromStorage,
-    sanitizeImportedEvents,
-    sanitizeImportedLabResults,
-    sanitizeImportedTemplates,
     writeTombstonesToStorage,
 } from '../utils/backupState';
+import { ImportActiveRecords, mergeImportedDataToStorage, processImportedDataToStorage } from '../utils/backupImport';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useHRTMode } from '../contexts/HRTModeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -165,24 +153,6 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
             }
         }
         if (touched) writeTombstones(m, current);
-    };
-
-    /**
-     * A replace-style import (including "restore this backup") is a statement
-     * about the whole set: whatever it leaves out is meant to be gone. Recording
-     * those as deletions is what lets a restore survive the next sync instead of
-     * being immediately undone by the cloud copy it was restoring from.
-     */
-    const reconcileReplacement = (
-        m: 'transfem' | 'transmasc',
-        kind: RecordKind,
-        before: { id: string }[],
-        after: { id: string }[],
-    ) => {
-        const keep = new Set(after.map(r => r.id));
-        const gone = before.map(r => r.id).filter(id => id && !keep.has(id));
-        forgetDeletions(kind, [...keep], m);
-        recordDeletions(kind, gone, m);
     };
 
     // --- State ---
@@ -682,203 +652,24 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
      * nothing and showing nothing, so the import can ask "replace your
      * records?" for a file that can actually replace them and report a bad
      * file straight away instead.
+     *
+     * The reconciliation itself lives in `backupImport.ts`; this wrapper owns
+     * only React state, the weight/PK setters, and the dialog.
      */
     const processImportedData = (parsed: any, { check = false }: { check?: boolean } = {}): boolean => {
-        // Writes to the other mode's storage, held back until the payload has
-        // passed the "anything valid?" test below, so a check (or a payload
-        // that fails it) leaves storage as it was.
-        const otherModeWrites: (() => void)[] = [];
         try {
-            let newEvents: DoseEvent[] = [];
-            let newWeight: number | undefined = undefined;
-            let newLabs: LabResult[] = [];
-            let newTemplates: DoseTemplate[] = [];
-            let newPkParams: PKCustomParams | undefined = undefined;
-            let importedOtherMode = false;
-            // Which kinds the payload actually *speaks about*, tracked one by
-            // one. A single "it had something for this mode" flag replaced all
-            // three lists, so a file carrying only `events` — the shape a v1
-            // export or a hand-written file often has — cleared the user's lab
-            // results and templates as a side effect of importing doses.
-            //
-            // A present-but-empty array still means "none", so restoring a
-            // backup with no labs still clears them. Only an absent key is
-            // silence. The distinction matters more now that a replace-import
-            // records what it drops as deletions: silence used to cost a wipe
-            // this device might get back from another one, and would now cost
-            // the same wipe on every device.
-            const replaced = { events: false, labResults: false, doseTemplates: false };
-
-            // New multi-mode payload: { modes: { transfem: {...}, transmasc: {...} } }
-            if (parsed && typeof parsed === 'object' && parsed.modes && typeof parsed.modes === 'object') {
-                const modesBlock = parsed.modes as Record<string, any>;
-                for (const m of ['transfem', 'transmasc'] as const) {
-                    const block = modesBlock[m];
-                    if (!block || typeof block !== 'object') continue;
-                    const evs = Array.isArray(block.events) ? sanitizeImportedEvents(block.events) : [];
-                    const ls = Array.isArray(block.labResults) ? sanitizeImportedLabResults(block.labResults) : [];
-                    const tmps = Array.isArray(block.doseTemplates)
-                        ? sanitizeImportedTemplates(block.doseTemplates)
-                        : [];
-                    if (m === mode) {
-                        if (Array.isArray(block.events)) {
-                            newEvents = evs;
-                            replaced.events = true;
-                        }
-                        if (Array.isArray(block.labResults)) {
-                            newLabs = ls;
-                            replaced.labResults = true;
-                        }
-                        if (Array.isArray(block.doseTemplates)) {
-                            newTemplates = tmps;
-                            replaced.doseTemplates = true;
-                        }
-                    } else {
-                        // Write other mode's data straight to localStorage.
-                        if (Array.isArray(block.events)) {
-                            otherModeWrites.push(() => {
-                                reconcileReplacement(m, 'events', loadJSON<DoseEvent[]>(keyFor(m, 'events'), []), evs);
-                                localStorage.setItem(keyFor(m, 'events'), JSON.stringify(evs));
-                            });
-                            importedOtherMode = true;
-                        }
-                        if (Array.isArray(block.labResults)) {
-                            otherModeWrites.push(() => {
-                                reconcileReplacement(
-                                    m,
-                                    'labResults',
-                                    loadJSON<LabResult[]>(keyFor(m, 'lab-results'), []),
-                                    ls,
-                                );
-                                localStorage.setItem(keyFor(m, 'lab-results'), JSON.stringify(ls));
-                            });
-                            importedOtherMode = true;
-                        }
-                        if (Array.isArray(block.doseTemplates)) {
-                            otherModeWrites.push(() => {
-                                reconcileReplacement(
-                                    m,
-                                    'doseTemplates',
-                                    loadJSON<DoseTemplate[]>(keyFor(m, 'dose-templates'), []),
-                                    tmps,
-                                );
-                                localStorage.setItem(keyFor(m, 'dose-templates'), JSON.stringify(tmps));
-                            });
-                            importedOtherMode = true;
-                        }
-                    }
-                }
-                if (typeof parsed.weight === 'number' && Number.isFinite(parsed.weight) && parsed.weight > 0) {
-                    newWeight = Math.min(BODY_WEIGHT_KG_MAX, Math.max(BODY_WEIGHT_KG_MIN, parsed.weight));
-                }
-                if (parsed.pkParams && typeof parsed.pkParams === 'object') {
-                    newPkParams = sanitizePKParams(parsed.pkParams) ?? undefined;
-                }
-            } else if (Array.isArray(parsed)) {
-                newEvents = sanitizeImportedEvents(parsed);
-                replaced.events = true;
-            } else if (typeof parsed === 'object' && parsed !== null) {
-                if (Array.isArray(parsed.events)) {
-                    newEvents = sanitizeImportedEvents(parsed.events);
-                    replaced.events = true;
-                }
-                if (typeof parsed.weight === 'number' && Number.isFinite(parsed.weight) && parsed.weight > 0) {
-                    newWeight = Math.min(BODY_WEIGHT_KG_MAX, Math.max(BODY_WEIGHT_KG_MIN, parsed.weight));
-                }
-                if (Array.isArray(parsed.labResults)) {
-                    newLabs = sanitizeImportedLabResults(parsed.labResults);
-                    replaced.labResults = true;
-                }
-                if (Array.isArray(parsed.doseTemplates)) {
-                    newTemplates = sanitizeImportedTemplates(parsed.doseTemplates);
-                    replaced.doseTemplates = true;
-                }
-                if (parsed.pkParams && typeof parsed.pkParams === 'object') {
-                    newPkParams = sanitizePKParams(parsed.pkParams) ?? undefined;
-                }
-            }
-
-            // v1 flat-format safety: if the payload contains items that belong to
-            // the *other* HRT mode (T esters / T-unit labs), siphon them into that
-            // mode's storage so they don't silently corrupt the active record.
-            if (!('modes' in (parsed || {}))) {
-                const otherMode: 'transfem' | 'transmasc' = mode === 'transmasc' ? 'transfem' : 'transmasc';
-                const eventBelongs = (e: DoseEvent) =>
-                    mode === 'transmasc' ? isTestosteroneEster(e.ester) : !isTestosteroneEster(e.ester);
-                const keepEvs: DoseEvent[] = [];
-                const otherEvs: DoseEvent[] = [];
-                for (const e of newEvents) (eventBelongs(e) ? keepEvs : otherEvs).push(e);
-                if (otherEvs.length) {
-                    otherModeWrites.push(() => {
-                        const existing = loadJSON<DoseEvent[]>(keyFor(otherMode, 'events'), []);
-                        const existingIds = new Set(existing.map(x => x.id));
-                        forgetDeletions(
-                            'events',
-                            otherEvs.map(e => e.id),
-                            otherMode,
-                        );
-                        localStorage.setItem(
-                            keyFor(otherMode, 'events'),
-                            JSON.stringify([...existing, ...otherEvs.filter(e => !existingIds.has(e.id))]),
-                        );
-                    });
-                    importedOtherMode = true;
-                    newEvents = keepEvs;
-                }
-                const labBelongs = (l: LabResult) =>
-                    mode === 'transmasc' ? isT_LabUnit(l.unit) : !isT_LabUnit(l.unit);
-                const keepLs: LabResult[] = [];
-                const otherLs: LabResult[] = [];
-                for (const l of newLabs) (labBelongs(l) ? keepLs : otherLs).push(l);
-                if (otherLs.length) {
-                    otherModeWrites.push(() => {
-                        const existing = loadJSON<LabResult[]>(keyFor(otherMode, 'lab-results'), []);
-                        const existingIds = new Set(existing.map(x => x.id));
-                        forgetDeletions(
-                            'labResults',
-                            otherLs.map(l => l.id),
-                            otherMode,
-                        );
-                        localStorage.setItem(
-                            keyFor(otherMode, 'lab-results'),
-                            JSON.stringify([...existing, ...otherLs.filter(l => !existingIds.has(l.id))]),
-                        );
-                    });
-                    importedOtherMode = true;
-                    newLabs = keepLs;
-                }
-            }
-
-            if (
-                !importedOtherMode &&
-                !newEvents.length &&
-                !newWeight &&
-                !newLabs.length &&
-                !newTemplates.length &&
-                !newPkParams
-            )
-                throw new Error('No valid entries');
+            const active: ImportActiveRecords = { events, labResults, doseTemplates, weight };
+            const result = processImportedDataToStorage(
+                parsed,
+                { storage: localStorage, owner, mode, active },
+                { check },
+            );
             if (check) return true;
-            otherModeWrites.forEach(write => write());
-
-            // A replace-import states the whole set for each kind it mentions,
-            // so anything it drops from one is a deletion. Recording it is what
-            // stops the next sync from pulling the dropped records straight back
-            // out of the cloud — which would make "restore this backup" a no-op.
-            if (replaced.events) {
-                reconcileReplacement(mode, 'events', events, newEvents);
-                setEvents(newEvents);
-            }
-            if (replaced.labResults) {
-                reconcileReplacement(mode, 'labResults', labResults, newLabs);
-                setLabResults(newLabs);
-            }
-            if (replaced.doseTemplates) {
-                reconcileReplacement(mode, 'doseTemplates', doseTemplates, newTemplates);
-                setDoseTemplates(newTemplates);
-            }
-            if (newWeight !== undefined) setWeight(newWeight);
-            if (newPkParams !== undefined) setPkParams(newPkParams);
+            if (result.events !== undefined) setEvents(result.events);
+            if (result.labResults !== undefined) setLabResults(result.labResults);
+            if (result.doseTemplates !== undefined) setDoseTemplates(result.doseTemplates);
+            if (result.weight !== undefined) setWeight(result.weight);
+            if (result.pkParams !== undefined) setPkParams(result.pkParams);
 
             showDialog('alert', t('drawer.import_success'));
             return true;
@@ -892,180 +683,18 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
 
     const mergeImportedData = (parsed: any): boolean => {
         try {
-            let incomingEvents: DoseEvent[] = [];
-            let incomingWeight: number | undefined = undefined;
-            let incomingLabs: LabResult[] = [];
-            let incomingTemplates: DoseTemplate[] = [];
-            let mergedOther = 0;
+            const active: ImportActiveRecords = { events, labResults, doseTemplates, weight };
+            const result = mergeImportedDataToStorage(parsed, { storage: localStorage, owner, mode, active });
 
-            if (parsed && typeof parsed === 'object' && parsed.modes && typeof parsed.modes === 'object') {
-                const modesBlock = parsed.modes as Record<string, any>;
-                for (const m of ['transfem', 'transmasc'] as const) {
-                    const block = modesBlock[m];
-                    if (!block || typeof block !== 'object') continue;
-                    const evs = Array.isArray(block.events) ? sanitizeImportedEvents(block.events) : [];
-                    const ls = Array.isArray(block.labResults) ? sanitizeImportedLabResults(block.labResults) : [];
-                    const tmps = Array.isArray(block.doseTemplates)
-                        ? sanitizeImportedTemplates(block.doseTemplates)
-                        : [];
-                    if (m === mode) {
-                        incomingEvents = evs;
-                        incomingLabs = ls;
-                        incomingTemplates = tmps;
-                    } else {
-                        // Merge into the other mode's localStorage directly.
-                        const existingEvs = loadJSON<DoseEvent[]>(keyFor(m, 'events'), []);
-                        const existingLs = loadJSON<LabResult[]>(keyFor(m, 'lab-results'), []);
-                        const existingTmps = loadJSON<DoseTemplate[]>(keyFor(m, 'dose-templates'), []);
-                        const evIds = new Set(existingEvs.map(e => e.id));
-                        const lsIds = new Set(existingLs.map(l => l.id));
-                        const tmpIds = new Set(existingTmps.map(tm => tm.id));
-                        const newEvs = evs.filter(e => !evIds.has(e.id));
-                        const newLs = ls.filter(l => !lsIds.has(l.id));
-                        const newTmps = tmps.filter(tm => !tmpIds.has(tm.id));
-                        // An explicit merge is the user asking for these records
-                        // back, so any tombstone standing in the way goes.
-                        forgetDeletions(
-                            'events',
-                            evs.map(e => e.id),
-                            m,
-                        );
-                        forgetDeletions(
-                            'labResults',
-                            ls.map(l => l.id),
-                            m,
-                        );
-                        forgetDeletions(
-                            'doseTemplates',
-                            tmps.map(tm => tm.id),
-                            m,
-                        );
-                        if (newEvs.length)
-                            localStorage.setItem(keyFor(m, 'events'), JSON.stringify([...existingEvs, ...newEvs]));
-                        if (newLs.length)
-                            localStorage.setItem(keyFor(m, 'lab-results'), JSON.stringify([...existingLs, ...newLs]));
-                        if (newTmps.length)
-                            localStorage.setItem(
-                                keyFor(m, 'dose-templates'),
-                                JSON.stringify([...existingTmps, ...newTmps]),
-                            );
-                        mergedOther += newEvs.length + newLs.length;
-                    }
-                }
-                if (typeof parsed.weight === 'number' && parsed.weight > 0) incomingWeight = parsed.weight;
-            } else if (Array.isArray(parsed)) {
-                incomingEvents = sanitizeImportedEvents(parsed);
-            } else if (typeof parsed === 'object' && parsed !== null) {
-                if (Array.isArray(parsed.events)) incomingEvents = sanitizeImportedEvents(parsed.events);
-                if (typeof parsed.weight === 'number' && parsed.weight > 0) incomingWeight = parsed.weight;
-                if (Array.isArray(parsed.labResults)) incomingLabs = sanitizeImportedLabResults(parsed.labResults);
-                if (Array.isArray(parsed.doseTemplates))
-                    incomingTemplates = sanitizeImportedTemplates(parsed.doseTemplates);
-            }
+            // Append only the new ids, using the same functional setters as
+            // before. Tombstone clearing and other-mode merges already happened
+            // in the helper.
+            if (result.events.length > 0) setEvents(prev => [...prev, ...result.events]);
+            if (result.weight !== undefined) setWeight(result.weight);
+            if (result.labResults.length > 0) setLabResults(prev => [...prev, ...result.labResults]);
+            if (result.doseTemplates.length > 0) setDoseTemplates(prev => [...prev, ...result.doseTemplates]);
 
-            // v1 flat-format safety (merge): siphon wrong-mode events *and labs*
-            // into the other mode's store so a transfem backup merged from
-            // transmasc mode doesn't contaminate the transmasc record.
-            if (!('modes' in (parsed || {}))) {
-                const otherMode: 'transfem' | 'transmasc' = mode === 'transmasc' ? 'transfem' : 'transmasc';
-                const eventBelongs = (e: DoseEvent) =>
-                    mode === 'transmasc' ? isTestosteroneEster(e.ester) : !isTestosteroneEster(e.ester);
-                const keepEvs: DoseEvent[] = [];
-                const otherEvs: DoseEvent[] = [];
-                for (const e of incomingEvents) (eventBelongs(e) ? keepEvs : otherEvs).push(e);
-                if (otherEvs.length) {
-                    const existing = loadJSON<DoseEvent[]>(keyFor(otherMode, 'events'), []);
-                    const existingIds = new Set(existing.map(x => x.id));
-                    const newOnes = otherEvs.filter(e => !existingIds.has(e.id));
-                    forgetDeletions(
-                        'events',
-                        otherEvs.map(e => e.id),
-                        otherMode,
-                    );
-                    if (newOnes.length) {
-                        localStorage.setItem(keyFor(otherMode, 'events'), JSON.stringify([...existing, ...newOnes]));
-                        mergedOther += newOnes.length;
-                    }
-                    incomingEvents = keepEvs;
-                }
-                const labBelongs = (l: LabResult) =>
-                    mode === 'transmasc' ? isT_LabUnit(l.unit) : !isT_LabUnit(l.unit);
-                const keepLs: LabResult[] = [];
-                const otherLs: LabResult[] = [];
-                for (const l of incomingLabs) (labBelongs(l) ? keepLs : otherLs).push(l);
-                if (otherLs.length) {
-                    const existing = loadJSON<LabResult[]>(keyFor(otherMode, 'lab-results'), []);
-                    const existingIds = new Set(existing.map(x => x.id));
-                    const newOnes = otherLs.filter(l => !existingIds.has(l.id));
-                    forgetDeletions(
-                        'labResults',
-                        otherLs.map(l => l.id),
-                        otherMode,
-                    );
-                    if (newOnes.length) {
-                        localStorage.setItem(
-                            keyFor(otherMode, 'lab-results'),
-                            JSON.stringify([...existing, ...newOnes]),
-                        );
-                        mergedOther += newOnes.length;
-                    }
-                    incomingLabs = keepLs;
-                }
-            }
-
-            if (
-                !mergedOther &&
-                !incomingEvents.length &&
-                !incomingWeight &&
-                !incomingLabs.length &&
-                !incomingTemplates.length
-            )
-                throw new Error('No valid entries');
-
-            let merged = mergedOther;
-
-            // Compute diffs synchronously against current state so the count is
-            // available immediately when showDialog is called (setter callbacks
-            // are invoked asynchronously by React and would not update `merged`
-            // in time).
-            if (incomingEvents.length > 0) {
-                const existingIds = new Set(events.map(e => e.id));
-                const newOnes = incomingEvents.filter(e => !existingIds.has(e.id));
-                merged += newOnes.length;
-                forgetDeletions(
-                    'events',
-                    incomingEvents.map(e => e.id),
-                );
-                if (newOnes.length > 0) setEvents(prev => [...prev, ...newOnes]);
-            }
-
-            if (incomingWeight !== undefined && incomingWeight > weight) {
-                setWeight(incomingWeight);
-            }
-
-            if (incomingLabs.length > 0) {
-                const existingIds = new Set(labResults.map(r => r.id));
-                const newOnes = incomingLabs.filter(r => !existingIds.has(r.id));
-                merged += newOnes.length;
-                forgetDeletions(
-                    'labResults',
-                    incomingLabs.map(r => r.id),
-                );
-                if (newOnes.length > 0) setLabResults(prev => [...prev, ...newOnes]);
-            }
-
-            if (incomingTemplates.length > 0) {
-                const existingIds = new Set(doseTemplates.map(t => t.id));
-                const newOnes = incomingTemplates.filter(t => !existingIds.has(t.id));
-                merged += newOnes.length;
-                forgetDeletions(
-                    'doseTemplates',
-                    incomingTemplates.map(t => t.id),
-                );
-                if (newOnes.length > 0) setDoseTemplates(prev => [...prev, ...newOnes]);
-            }
-
-            showDialog('alert', (t('account.merge_success') as string).replace('{n}', String(merged)));
+            showDialog('alert', (t('account.merge_success') as string).replace('{n}', String(result.mergedCount)));
             return true;
         } catch (err) {
             console.error(err);
