@@ -184,3 +184,9 @@ change protection rules.
 - Both `File publish (ubuntu-latest)` and `File publish (windows-latest)` jobs passed.
 - URL: https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39147752217
 - Windows ACL equivalence, SMB/network filesystem behavior, cross-process locking, crash cleanup and application-level atomic restore remain `NOT_TESTED`/`BLOCKED`.
+
+### P-13/P-14 platform additions
+
+- Added `publish_crossprocess_test.go`: four-process no-replace race with a start barrier, plus a Windows-only `icacls` ACL smoke test.
+- Linux: all Go tests PASS, including cross-process; Windows ACL test SKIPs on Linux.
+- Windows native run remains NOT_TESTED until CI completes; Windows ACL result is smoke evidence only, not a security guarantee.

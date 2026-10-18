@@ -80,3 +80,9 @@ Workflow: `.github/workflows/platform-filepublish.yml`
 - **URL:** https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39147752217
 - **Scope:** the Go harness tests for existing-target protection, concurrent publishing, cleanup, missing parent, Unix mode and Unicode/space paths passed on both runners.
 - **Still not proven:** Windows ACL equivalence to Unix `0600`, hard-link privilege/edge cases, SMB/network filesystem behavior, cross-process file locking, crash cleanup, and application-level Replace/Merge atomicity. These remain `NOT_TESTED` or `BLOCKED`.
+
+## P-13/P-14 cross-process and Windows ACL
+
+- `P-13` runs four separate OS processes with a readiness/start barrier against one target. Linux PASS (exactly one winner, no temp files).
+- `P-14` is a Windows-only `icacls` smoke test. It logs the ACL and rejects explicit `Everyone:(F/M)` and `BUILTIN\Users:(F/M)` grants. It is a smoke check, not a proof of Windows ACL equivalence or hardening.
+- Windows native execution: pending the next CI run; do not treat Linux execution as Windows evidence.
