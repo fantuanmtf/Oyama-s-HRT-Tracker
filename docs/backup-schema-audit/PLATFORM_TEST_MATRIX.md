@@ -86,3 +86,13 @@ Workflow: `.github/workflows/platform-filepublish.yml`
 - `P-13` runs four separate OS processes with a readiness/start barrier against one target. Linux PASS (exactly one winner, no temp files).
 - `P-14` is a Windows-only `icacls` smoke test. It logs the ACL and rejects explicit `Everyone:(F/M)` and `BUILTIN\Users:(F/M)` grants. It is a smoke check, not a proof of Windows ACL equivalence or hardening.
 - Windows native execution: pending the next CI run; do not treat Linux execution as Windows evidence.
+
+## Actual native CI run: cross-process and Windows ACL
+
+- **Run:** [39148724074](https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39148724074)
+- **Head:** `41836e1688b4c3ae383c245a5109953141af3200`
+- **Result:** `completed / success`
+- **Ubuntu:** `File publish (ubuntu-latest)` — success; checkout, Go setup, `go vet`, `go test`, post steps.
+- **Windows:** `File publish (windows-latest)` — success; checkout, Go setup, `go vet`, `go test`, post steps.
+- **Meaning:** the cross-process publish test and the Windows `icacls` ACL smoke check ran on native Windows. The ACL check is a smoke assertion, not a complete ACL/security review.
+- **Still not proven:** SMB/network filesystem semantics, hard-link privilege edge cases on domain-managed Windows, crash cleanup, application-level Replace/Merge atomicity.

@@ -190,3 +190,11 @@ change protection rules.
 - Added `publish_crossprocess_test.go`: four-process no-replace race with a start barrier, plus a Windows-only `icacls` ACL smoke test.
 - Linux: all Go tests PASS, including cross-process; Windows ACL test SKIPs on Linux.
 - Windows native run remains NOT_TESTED until CI completes; Windows ACL result is smoke evidence only, not a security guarantee.
+
+## Native CI: cross-process and Windows ACL
+
+- **Run:** [39148724074](https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39148724074), head `41836e1688b4c3ae383c245a5109953141af3200`, `completed / success`.
+- **Jobs:** `File publish (ubuntu-latest)` success; `File publish (windows-latest)` success.
+- **Coverage:** cross-process publish winner and Windows `icacls` ACL smoke check executed on native Windows.
+- **Status:** Windows ACL smoke `PASS`; SMB/network filesystem, hard-link privilege edge cases, crash cleanup and application-level Replace/Merge atomicity remain `NOT_TESTED` or `BLOCKED`.
+- **Push:** pending at the time of this handoff; final checkpoint records the remote SHA.
