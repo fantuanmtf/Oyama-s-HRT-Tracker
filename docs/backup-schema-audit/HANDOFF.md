@@ -134,3 +134,14 @@ change protection rules.
 4. Which preferences are in Option B.
 5. Replace-only vs merge support for Option B.
 6. Whether L2 tests may import production TypeScript modules directly or require extracted fixtures.
+
+## L2 production test seam design
+
+- **Document:** `L2_TEST_SEAM_DESIGN.md`.
+- **Status:** design PASS; direct pure-function tests can start now; hook-closure tests BLOCKED until a seam is approved; L3 BLOCKED until production restore exists.
+- **Directly testable:** `normalizeSupply`, `packUnitMG`, `packKindsFor`, `defaultPack`, `normalizePlanItem`.
+- **Not directly testable:** `sanitizeImportedEvents`, `sanitizeImportedLabResults`, `sanitizeImportedTemplates`, `processImportedData`, `mergeImportedData`, `buildExportPayload`, `applySyncedState` (closures inside `useAppData`).
+- **Recommended seam:** extract pure export/apply helpers with an injected `StorageLike` interface, then test them with an in-memory storage. This is a production refactor and requires separate approval.
+- **Transaction risk:** restore spans multiple `localStorage` keys; there is no transaction or proven rollback. All-or-nothing restore remains BLOCKED.
+- **Coverage matrix:** L2-01 to L2-17; see the document.
+- **Push:** pending until this work item is committed.
