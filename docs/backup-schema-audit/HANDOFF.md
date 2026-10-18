@@ -95,3 +95,21 @@ Docker, or releases.
 `473414f` is committed locally. Push only this branch to `origin` after the
 final safety check; never to `upstream`. Do not merge, release, deploy, or
 change protection rules.
+
+## Synthetic Restore Test Harness (2026-10-19)
+
+- **Document:** `SYNTHETIC_RESTORE_HARNESS.md`
+- **Commit:** `196d7cf` `docs: design synthetic restore test harness`
+- **Scope:** test design for Option B restore; no production implementation.
+- **Layers:** L1 pure model (can run without production restore), L2 production-function tests (blocked until test seams exist), L3 end-to-end restore (blocked until production restore exists).
+- **Coverage:** T1-T15, replace/merge, duplicate IDs, ID conflicts without `updatedAt`, invalid `Supply.pack`, plan bounds, calibration, credentials, unknown fields, empty-vs-missing, rollback/atomicity.
+- **Status:** design PASS; L1 NOT_TESTED; L2/L3 BLOCKED; product conflict policy and preference scope NEEDS_HUMAN_APPROVAL.
+- **Push:** this handoff is committed after `196d7cf`; push status is recorded at the final checkpoint.
+
+### Open decisions
+
+1. Option B include/exclude list for quickDoses, supplies, plan, calibration and preferences.
+2. Default conflict policy where local-only records lack `updatedAt`/tombstones.
+3. Whether to add timestamps/tombstones to local-only schemas (schema change; needs audit).
+4. Which preferences are in Option B.
+5. Replace-only vs merge support for Option B.
