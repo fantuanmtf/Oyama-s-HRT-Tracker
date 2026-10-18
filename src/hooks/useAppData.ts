@@ -28,6 +28,12 @@ import {
     writeTombstonesToStorage,
 } from '../utils/backupState';
 import { ImportActiveRecords, mergeImportedDataToStorage, processImportedDataToStorage } from '../utils/backupImport';
+import {
+    buildCompleteBackupBundleFromStorage,
+    inspectCompleteBackupBundle,
+    mergeCompleteBackupBundleToStorage,
+    type CompleteBackupActive,
+} from '../utils/backupBundle';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useHRTMode } from '../contexts/HRTModeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -712,6 +718,60 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
             pkParams,
         });
 
+    const completeBackupActive = (): CompleteBackupActive => ({
+        events,
+        labResults,
+        doseTemplates,
+        quickDoses,
+        supplies,
+        plan,
+        weight,
+        pkParams,
+        calibrationMethod,
+        calibrationHistoryMode,
+    });
+
+    /** Unencrypted complete-device bundle. Encryption belongs to the Tools project. */
+    const buildCompleteBackupBundle = (createdAt?: string) =>
+        buildCompleteBackupBundleFromStorage(localStorage, owner, mode, completeBackupActive(), createdAt);
+
+    /** Validate and count a complete bundle without writing anything. */
+    const previewCompleteBackupBundle = (parsed: unknown) =>
+        inspectCompleteBackupBundle(parsed, {
+            storage: localStorage,
+            owner,
+            mode,
+            active: completeBackupActive(),
+        });
+
+    /**
+     * Merge the safe categories of a complete bundle and install the active
+     * mode's merged arrays. Preferences are returned to the caller because they
+     * live in React contexts/state, not in this hook.
+     */
+    const applyCompleteBackupBundle = (parsed: unknown) => {
+        const result = mergeCompleteBackupBundleToStorage(parsed, {
+            storage: localStorage,
+            owner,
+            mode,
+            active: completeBackupActive(),
+        });
+        const active = result.modes[mode];
+        if (active?.events !== undefined) setEvents(active.events);
+        if (active?.labResults !== undefined) setLabResults(active.labResults);
+        if (active?.doseTemplates !== undefined) setDoseTemplates(active.doseTemplates);
+        if (active?.quickDoses !== undefined) setQuickDoses(active.quickDoses);
+        if (active?.supplies !== undefined) setSupplies(active.supplies);
+        if (active?.plan !== undefined) setPlan(active.plan);
+        if (result.weight !== undefined) setWeightState(result.weight);
+        if (result.pkParams !== undefined) setPkParamsState(result.pkParams);
+        if (result.calibration) {
+            setCalibrationMethodState(result.calibration.method);
+            setCalibrationHistoryModeState(result.calibration.historyMode);
+        }
+        return result;
+    };
+
     /**
      * Install the result of a cloud sync. Deliberately silent: this runs on its
      * own schedule, not because anyone pressed anything, and a dialog for it
@@ -782,6 +842,9 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
         processImportedData,
         mergeImportedData,
         buildExportPayload,
+        buildCompleteBackupBundle,
+        previewCompleteBackupBundle,
+        applyCompleteBackupBundle,
         applySyncedState,
         // (account, mode) currently selected vs. the one whose data is actually
         // in state. Cloud sync waits for the two to agree — see readyScope.

@@ -10,6 +10,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { PlanItem, planEvent } from './utils/plan';
 import Plan from './pages/Plan';
 import { parseCloudBackup } from './utils/cloudBackup';
+import { COMPLETE_BACKUP_FORMAT, type CompleteBackupPreview, type PortablePreferences } from './utils/backupBundle';
 import { useAppData } from './hooks/useAppData';
 import { useAppNavigation, tabForView, ViewKey } from './hooks/useAppNavigation';
 import Forecast from './pages/Forecast';
@@ -119,6 +120,9 @@ const AppContent = () => {
         processImportedData,
         mergeImportedData,
         buildExportPayload,
+        buildCompleteBackupBundle,
+        previewCompleteBackupBundle,
+        applyCompleteBackupBundle,
         applySyncedState,
         scope,
         readyScope,
@@ -205,6 +209,16 @@ const AppContent = () => {
         const saved = localStorage.getItem('app-theme');
         return (saved as AppTheme) || 'system';
     });
+
+    // Imported complete bundles carry only the confirmed preference keys. The
+    // data layer returns them; the app owns the React state and storage effects.
+    const applyPortablePreferences = (prefs: PortablePreferences) => {
+        if (prefs['app-theme'] !== undefined) setTheme(prefs['app-theme']);
+        if (prefs['hrt-lang'] !== undefined) setLang(prefs['hrt-lang']);
+        if (prefs['app-show-prediction'] !== undefined) setShowPrediction(prefs['app-show-prediction']);
+        if (prefs['app-hide-site-label'] !== undefined) setHideSiteLabel(prefs['app-hide-site-label']);
+        if (prefs['hrt-supply-lead-days'] !== undefined) setSupplyLeadDays(prefs['hrt-supply-lead-days']);
+    };
     // Same reading as the Overview's: an explicit dark theme, or the system's under "system".
     const isDarkMode =
         theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -317,6 +331,78 @@ const AppContent = () => {
             });
         });
 
+    const bundleCountLine = (preview: CompleteBackupPreview, mode: 'transfem' | 'transmasc') => {
+        const c = preview.counts[mode];
+        return `${mode}: events ${c.events}, labs ${c.labResults}, templates ${c.doseTemplates}, quick doses ${c.quickDoses}, supplies ${c.supplies}, plan ${c.plan}, deletions ${c.deletions}`;
+    };
+
+    /** Counts and conflicts, shown before a complete bundle is merged. */
+    const describeCompleteBackupPreview = (preview: CompleteBackupPreview): string => {
+        const lines = [t('import.bundle_unencrypted_warning')];
+        if (preview.createdAt) lines.push(`${t('import.bundle_created')} ${preview.createdAt}`);
+        if (preview.sourceMode) lines.push(`${t('import.bundle_source_mode')} ${preview.sourceMode}`);
+        if (preview.sourceMode && preview.sourceMode !== mode) lines.push(t('import.bundle_mode_warning'));
+        lines.push(bundleCountLine(preview, 'transfem'));
+        lines.push(bundleCountLine(preview, 'transmasc'));
+        if (preview.conflicts.length) lines.push(`${t('import.bundle_conflicts')}:\n${preview.conflicts.join('\n')}`);
+        if (preview.blocked.length) lines.push(`${t('import.bundle_blocked')}: ${preview.blocked.join(', ')}`);
+        if (preview.issues.length) lines.push(`${t('import.bundle_issues')}: ${preview.issues.join('; ')}`);
+        if (preview.preferences.ignored.length)
+            lines.push(`${t('import.bundle_ignored_preferences')}: ${preview.preferences.ignored.join(', ')}`);
+        if (preview.preferences.invalid.length)
+            lines.push(`${t('import.bundle_invalid_preferences')}: ${preview.preferences.invalid.join(', ')}`);
+        lines.push(t('import.bundle_merge_note'));
+        return lines.join('\n');
+    };
+
+    /**
+     * Complete bundles are unencrypted JSON and merge only. Replace-all remains
+     * BLOCKED: there is no proven multi-key transaction, so this path never
+     * clears local categories.
+     */
+    const confirmCompleteBackupImport = (parsed: unknown): Promise<boolean> =>
+        new Promise(resolve => {
+            const preview = previewCompleteBackupBundle(parsed);
+            if (!preview.ok) {
+                showDialog('alert', `${t('import.bundle_invalid')}\n${preview.errors.join('\n')}`);
+                resolve(false);
+                return;
+            }
+            const run = () => {
+                try {
+                    const result = applyCompleteBackupBundle(parsed);
+                    if (result.applied.length === 0) {
+                        showDialog(
+                            'alert',
+                            `${t('import.bundle_merge_failed')}\n${t('import.bundle_blocked')}: ${result.blocked.join(', ')}`,
+                        );
+                        resolve(false);
+                        return;
+                    }
+                    applyPortablePreferences(result.preferences);
+                    const message = (
+                        result.blocked.length
+                            ? t('import.bundle_merge_success_blocked')
+                            : t('import.bundle_merge_success')
+                    )
+                        .replace('{added}', String(result.added))
+                        .replace('{updated}', String(result.updated))
+                        .replace('{blocked}', result.blocked.join(', '));
+                    showDialog('alert', message);
+                    resolve(true);
+                } catch (err) {
+                    console.error(err);
+                    showDialog('alert', t('import.bundle_merge_failed'));
+                    resolve(false);
+                }
+            };
+            showDialog('confirm', describeCompleteBackupPreview(preview), run, {
+                title: t('import.bundle_preview_title'),
+                confirmLabel: t('import.bundle_merge_btn'),
+                onCancel: () => resolve(false),
+            });
+        });
+
     const importEventsFromJson = async (text: string): Promise<boolean> => {
         try {
             let parsed = JSON.parse(text);
@@ -332,6 +418,10 @@ const AppContent = () => {
             if (parsed.c && typeof parsed.c === 'string') {
                 const decompressed = await decompressData(parsed.c);
                 parsed = JSON.parse(decompressed);
+            }
+
+            if (parsed && typeof parsed === 'object' && parsed.format === COMPLETE_BACKUP_FORMAT) {
+                return await confirmCompleteBackupImport(parsed);
             }
 
             return await confirmImport(parsed);
@@ -355,6 +445,10 @@ const AppContent = () => {
                 }
                 setIsPasswordInputOpen(false);
                 setPendingImportText(null);
+                if (parsed && typeof parsed === 'object' && parsed.format === COMPLETE_BACKUP_FORMAT) {
+                    await confirmCompleteBackupImport(parsed);
+                    return;
+                }
                 confirmImport(parsed);
             } catch (e) {
                 console.error(e);
@@ -430,6 +524,19 @@ const AppContent = () => {
             downloadFile(json, `hrt-dosages-${new Date().toISOString().split('T')[0]}.json`);
         }
         return null;
+    };
+
+    /**
+     * The complete bundle is deliberately plaintext JSON. OpenPGP encryption is
+     * the offline Tools project's job; this website never handles keys or
+     * passphrases and does not claim a cold-backup encryption format.
+     */
+    const handleCompleteBackupExport = () => {
+        const bundle = buildCompleteBackupBundle();
+        downloadFile(
+            JSON.stringify(bundle, null, 2),
+            `hrt-complete-backup-${new Date().toISOString().split('T')[0]}.json`,
+        );
     };
 
     // Reconcile, then upload — not a plain upload. Every save inserts a new
@@ -775,6 +882,7 @@ const AppContent = () => {
                             weight={weight}
                             onExport={handleExportConfirm}
                             onQuickExport={handleQuickExport}
+                            onExportCompleteBackup={handleCompleteBackupExport}
                             onBack={() => handleViewChange('settings')}
                         />
                     )}

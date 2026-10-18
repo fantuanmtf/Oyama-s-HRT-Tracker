@@ -266,6 +266,34 @@ export const TRANSLATIONS_BASE = {
         'export.copy_desc': '将 JSON 复制到剪贴板。',
         'export.copied': 'JSON 已复制',
         'export.copy_failed': '没能复制到剪贴板。',
+        'export.complete_title': '完整备份（未加密）',
+        'export.complete_desc': '包含记录、用品、方案、校准和设置的完整 JSON。未加密；请使用离线 Tools 流程加密。',
+        'export.complete_btn': '下载完整备份',
+        'export.complete_warning':
+            '完整备份是未加密的 JSON。请勿直接上传或分享；OpenPGP 加密/解密由离线 Tools 流程负责，网站不处理私钥或口令。',
+        'import.complete_title': '完整备份（未加密）',
+        'import.complete_note':
+            '完整备份是未加密的 JSON，包含记录、用品、方案、校准和设置。网站不会添加 OpenPGP 加密，也不处理私钥或口令；加密与解密请使用离线 Tools 流程。',
+        'import.complete_merge_only': '完整备份导入只执行合并；替换全部数据尚未实现（BLOCKED）。',
+        'import.bundle_preview_title': '导入完整备份？',
+        'import.bundle_unencrypted_warning': '此文件未加密。',
+        'import.bundle_created': '创建时间：',
+        'import.bundle_source_mode': '来源模式：',
+        'import.bundle_conflicts': '冲突',
+        'import.bundle_blocked': '已中止的类别',
+        'import.bundle_issues': '无效数据',
+        'import.bundle_ignored_preferences': '已忽略的设置',
+        'import.bundle_invalid_preferences': '无效的设置',
+        'import.bundle_merge_btn': '合并',
+        'import.bundle_merge_note':
+            '只合并可安全导入的类别；同一 ID 且没有可靠 updatedAt 时，该类别会中止。不会清空本地数据。',
+        'import.bundle_merge_success': '完整备份已合并：新增 {added}，更新 {updated}。',
+        'import.bundle_merge_success_blocked':
+            '完整备份已合并：新增 {added}，更新 {updated}；以下类别已中止：{blocked}。',
+        'import.bundle_merge_failed': '完整备份导入失败，未写入任何数据。',
+        'import.bundle_invalid': '这不是有效的完整备份文件。',
+        'import.bundle_unknown_version': '不支持的完整备份版本。',
+        'import.bundle_mode_warning': '备份来源模式与当前模式不同；会按模式分别合并，不会切换当前模式。',
 
         'btn.add': '新增用药',
         'btn.save': '保存',
@@ -1131,6 +1159,36 @@ export const TRANSLATIONS_BASE = {
         'export.copy_desc': 'Copy JSON to clipboard.',
         'export.copied': 'JSON copied',
         'export.copy_failed': "Couldn't copy to the clipboard.",
+        'export.complete_title': 'Complete backup (unencrypted)',
+        'export.complete_desc':
+            'Full JSON with records, supplies, plan, calibration and settings. Not encrypted; encrypt it with the offline Tools workflow.',
+        'export.complete_btn': 'Download complete backup',
+        'export.complete_warning':
+            'The complete backup is unencrypted JSON. Do not upload or share it directly. OpenPGP encryption/decryption belongs to the offline Tools workflow; this website does not handle private keys or passphrases.',
+        'import.complete_title': 'Complete backup (unencrypted)',
+        'import.complete_note':
+            'A complete backup is unencrypted JSON containing records, supplies, plan, calibration and settings. This website does not add OpenPGP encryption and does not handle private keys or passphrases; use the offline Tools workflow to encrypt or decrypt it.',
+        'import.complete_merge_only': 'Complete-backup import merges only; replace-all is not implemented (BLOCKED).',
+        'import.bundle_preview_title': 'Import complete backup?',
+        'import.bundle_unencrypted_warning': 'This file is not encrypted.',
+        'import.bundle_created': 'Created:',
+        'import.bundle_source_mode': 'Source mode:',
+        'import.bundle_conflicts': 'Conflicts',
+        'import.bundle_blocked': 'Blocked categories',
+        'import.bundle_issues': 'Invalid data',
+        'import.bundle_ignored_preferences': 'Ignored settings',
+        'import.bundle_invalid_preferences': 'Invalid settings',
+        'import.bundle_merge_btn': 'Merge',
+        'import.bundle_merge_note':
+            'Only categories that pass validation are merged. A category with a same-id record and no reliable updatedAt is blocked. Local data is never cleared.',
+        'import.bundle_merge_success': 'Complete backup merged: {added} added, {updated} updated.',
+        'import.bundle_merge_success_blocked':
+            'Complete backup merged: {added} added, {updated} updated; blocked categories: {blocked}.',
+        'import.bundle_merge_failed': 'Complete backup import failed; no data was written.',
+        'import.bundle_invalid': 'This is not a valid complete backup file.',
+        'import.bundle_unknown_version': 'Unsupported complete backup version.',
+        'import.bundle_mode_warning':
+            'The backup was made in a different mode; each mode is merged separately and the current mode is not switched.',
 
         'btn.add': 'Add Dose',
         'btn.save': 'Save',

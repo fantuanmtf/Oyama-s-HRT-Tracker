@@ -37,6 +37,10 @@ const ImportSettings: React.FC<ImportSettingsProps> = ({ onImportJson, onBack, o
                         </>
                     )}
                 </div>
+                <div className="callout mt-1 mb-2">
+                    <strong className="font-medium text-[var(--text)]">{t('import.complete_title')}</strong>{' '}
+                    {t('import.complete_note')} {t('import.complete_merge_only')}
+                </div>
                 <ImportSection onImportJson={onImportJson} />
             </div>
         </div>
