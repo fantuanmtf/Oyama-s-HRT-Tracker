@@ -17,11 +17,9 @@ import {
     normalizeCalibrationMethod,
     isTestosteroneEster,
     isT_LabUnit,
-    isLabAssay,
     PKCustomParams,
     applyPKOverrides,
     sanitizePKParams,
-    isPlausibleBodyWeightKG,
     BODY_WEIGHT_KG_MIN,
     BODY_WEIGHT_KG_MAX,
     DOSE_MG_MAX,
@@ -31,10 +29,21 @@ import {
 import { createDayLabelFormatter, toDayKey } from '../utils/helpers';
 import { detectRegimens, dosesAhead, normalizeSupply, Supply } from '../utils/regimen';
 import { PlanItem, normalizePlanItem, legacyCpaItem, regimensFromPlan } from '../utils/plan';
+import {
+    DoseTemplate,
+    QuickDose,
+    applySyncedStateToStorage,
+    buildExportPayloadFromStorage,
+    readTombstonesFromStorage,
+    sanitizeImportedEvents,
+    sanitizeImportedLabResults,
+    sanitizeImportedTemplates,
+    writeTombstonesToStorage,
+} from '../utils/backupState';
 import { useTranslation } from '../contexts/LanguageContext';
 import { useHRTMode } from '../contexts/HRTModeContext';
 import { useAuth } from '../contexts/AuthContext';
-import { MODE_KEYS, RecordKind, SyncState, Tombstones, pruneTombstones, sanitizeTombstones } from '../utils/syncMerge';
+import { RecordKind, SyncState, Tombstones } from '../utils/syncMerge';
 
 /** Namespace used while signed out. Its keys are the original, un-prefixed ones. */
 const LOCAL_OWNER = 'local';
@@ -84,25 +93,7 @@ function adoptSignedOutData(owner: string): void {
     }
 }
 
-export interface DoseTemplate {
-    id: string;
-    name: string;
-    route: Route;
-    ester: Ester;
-    doseMG: number;
-    extras: any;
-    createdAt: number;
-    /** Epoch ms of the last edit — see DoseEvent.updatedAt. */
-    updatedAt?: number;
-}
-
-export interface QuickDose {
-    id: string;
-    route: Route;
-    ester: Ester;
-    value: number;
-    createdAt: number;
-}
+export type { DoseTemplate, QuickDose } from '../utils/backupState';
 
 /** One day's worth of dose records, as the history list renders them. */
 export interface DoseDayGroup {
@@ -144,10 +135,10 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
     // them straight from storage keeps deletes correct even when several land in
     // the same commit.
     const readTombstones = (m: 'transfem' | 'transmasc'): Tombstones =>
-        sanitizeTombstones(loadJSON<unknown>(keyFor(m, 'deletions'), null));
+        readTombstonesFromStorage(localStorage, owner, m);
 
     const writeTombstones = (m: 'transfem' | 'transmasc', next: Tombstones) => {
-        localStorage.setItem(keyFor(m, 'deletions'), JSON.stringify(pruneTombstones(next, Date.now())));
+        writeTombstonesToStorage(localStorage, owner, m, next);
     };
 
     const recordDeletions = (kind: RecordKind, ids: string[], m: 'transfem' | 'transmasc' = mode) => {
@@ -686,105 +677,6 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
         touchPkParams();
         setPkParamsState(null);
     };
-    // A backup with hundreds of thousands of same-day events makes the
-    // simulation's peri-event sampling explode into a synchronous loop that
-    // never finishes, and a file like that would wedge every later open too.
-    // Reject it outright so nothing is written.
-    const MAX_IMPORT_ENTRIES = 20000;
-
-    /** Carry a record's edit stamp through sanitising; absent or junk becomes undefined. */
-    const keepStamp = (raw: any): number | undefined => {
-        const n = Number(raw?.updatedAt);
-        return Number.isFinite(n) && n > 0 ? n : undefined;
-    };
-
-    // What a drug code looks like. One this build doesn't know is most likely a
-    // drug a newer version added, and is kept exactly as stored: rewriting it
-    // as estradiol, as this used to, put the newer device's doses on this one's
-    // estradiol curve, and the next sync carried the rewrite back to the cloud.
-    // (isKnownEster in logic.ts keeps such a code out of every estimate.)
-    const DRUG_CODE = /^[A-Za-z0-9_]{1,24}$/;
-    const isDrugCode = (v: unknown): v is Ester => typeof v === 'string' && DRUG_CODE.test(v);
-
-    const sanitizeImportedEvents = (raw: any): DoseEvent[] => {
-        if (!Array.isArray(raw)) throw new Error('Invalid format');
-        if (raw.length > MAX_IMPORT_ENTRIES) throw new Error('Too many entries');
-        return raw
-            .map((item: any) => {
-                if (!item || typeof item !== 'object') return null;
-                const { route, timeH, doseMG, ester, extras } = item;
-                if (!Object.values(Route).includes(route)) return null;
-                const timeNum = Number(timeH);
-                // Out-of-range timestamps are dropped rather than clamped: moving a
-                // record to a date the user never chose is worse than losing it, and
-                // a stray one stretches the simulation grid over the whole span.
-                if (!Number.isFinite(timeNum) || timeNum < EVENT_TIME_H_MIN || timeNum > EVENT_TIME_H_MAX) return null;
-                const doseNum = Number(doseMG);
-                // A dose with no usable code at all predates the field and is estradiol.
-                const validEster = isDrugCode(ester) ? ester : Ester.E2;
-                const sanitizedExtras = extras && typeof extras === 'object' ? extras : {};
-                return {
-                    id: typeof item.id === 'string' ? item.id : uuidv4(),
-                    route,
-                    timeH: timeNum,
-                    doseMG: Number.isFinite(doseNum) ? Math.min(DOSE_MG_MAX, Math.max(0, doseNum)) : 0,
-                    ester: validEster,
-                    extras: sanitizedExtras,
-                    updatedAt: keepStamp(item),
-                } as DoseEvent;
-            })
-            .filter((item): item is DoseEvent => item !== null);
-    };
-
-    const sanitizeImportedLabResults = (raw: any): LabResult[] => {
-        if (!Array.isArray(raw)) return [];
-        if (raw.length > MAX_IMPORT_ENTRIES) throw new Error('Too many entries');
-        return raw
-            .map((item: any) => {
-                if (!item || typeof item !== 'object') return null;
-                const { timeH, concValue, unit } = item;
-                const timeNum = Number(timeH);
-                const valNum = Number(concValue);
-                if (!Number.isFinite(timeNum) || !Number.isFinite(valNum)) return null;
-                const unitVal =
-                    unit === 'pg/ml' || unit === 'pmol/l' || unit === 'ng/dl' || unit === 'nmol/l' ? unit : 'pmol/l';
-                return {
-                    id: typeof item.id === 'string' ? item.id : uuidv4(),
-                    timeH: timeNum,
-                    concValue: valNum,
-                    unit: unitVal,
-                    ...(isLabAssay(item.assay) ? { assay: item.assay } : {}),
-                    updatedAt: keepStamp(item),
-                } as LabResult;
-            })
-            .filter((item): item is LabResult => item !== null);
-    };
-
-    const sanitizeImportedTemplates = (raw: any): DoseTemplate[] => {
-        if (!Array.isArray(raw)) return [];
-        if (raw.length > MAX_IMPORT_ENTRIES) throw new Error('Too many entries');
-        return raw
-            .map((item: any) => {
-                if (!item || typeof item !== 'object') return null;
-                const { name, route, ester, doseMG, extras, createdAt } = item;
-                if (!Object.values(Route).includes(route)) return null;
-                if (!isDrugCode(ester)) return null;
-                const doseNum = Number(doseMG);
-                if (!Number.isFinite(doseNum) || doseNum < 0) return null;
-                return {
-                    id: typeof item.id === 'string' ? item.id : uuidv4(),
-                    name: typeof name === 'string' ? name : 'Template',
-                    route,
-                    ester,
-                    doseMG: doseNum,
-                    extras: extras && typeof extras === 'object' ? extras : {},
-                    createdAt: Number.isFinite(createdAt) ? createdAt : Date.now(),
-                    updatedAt: keepStamp(item),
-                } as DoseTemplate;
-            })
-            .filter((item): item is DoseTemplate => item !== null);
-    };
-
     /**
      * `check`: only say whether the payload holds anything to import, writing
      * nothing and showing nothing, so the import can ask "replace your
@@ -1182,40 +1074,14 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
         }
     };
 
-    const buildExportPayload = () => {
-        const readMode = (m: 'transfem' | 'transmasc') => ({
-            events: loadJSON<DoseEvent[]>(keyFor(m, 'events'), []),
-            labResults: loadJSON<LabResult[]>(keyFor(m, 'lab-results'), []),
-            doseTemplates: loadJSON<DoseTemplate[]>(keyFor(m, 'dose-templates'), []),
-            deletions: readTombstones(m),
-        });
-        const modes = {
-            transfem: readMode('transfem'),
-            transmasc: readMode('transmasc'),
-        };
-        // Overlay current in-memory state for the active mode.
-        modes[mode] = { events, labResults, doseTemplates, deletions: readTombstones(mode) };
-
-        return {
-            meta: { version: 2, exportedAt: new Date().toISOString() },
-            mode,
-            weight,
-            // Last-write stamps for the two values sync can't merge per record.
-            // Missing on payloads written before sync existed, which is exactly
-            // how they should lose to a stamped one.
-            weightUpdatedAt: Number(localStorage.getItem(sharedKey('weight-at'))) || undefined,
-            modes,
-            // Flat v1-compatible fields mirror the currently active mode.
+    const buildExportPayload = () =>
+        buildExportPayloadFromStorage(localStorage, owner, mode, {
             events,
             labResults,
             doseTemplates,
-            // PK parameter overrides. Explicitly `null` when the user cleared
-            // them — omitting the key would read as "this payload says nothing
-            // about PK params", and the cleared state would never propagate.
-            pkParams: pkParams ?? null,
-            pkParamsUpdatedAt: Number(localStorage.getItem(sharedKey('pk-params-at'))) || undefined,
-        };
-    };
+            weight,
+            pkParams,
+        });
 
     /**
      * Install the result of a cloud sync. Deliberately silent: this runs on its
@@ -1228,45 +1094,15 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
      * reason a malformed one can't wedge the simulation.
      */
     const applySyncedState = (state: SyncState): void => {
-        // Sanitise both modes up front: the sanitisers throw on an oversized
-        // payload, and doing that halfway through the writes would leave one
-        // mode updated and the other not.
-        const clean = MODE_KEYS.map(m => ({
-            m,
-            events: sanitizeImportedEvents(state.modes[m].events),
-            labResults: sanitizeImportedLabResults(state.modes[m].labResults),
-            doseTemplates: sanitizeImportedTemplates(state.modes[m].doseTemplates),
-            deletions: state.modes[m].deletions,
-        }));
-
-        for (const block of clean) {
-            writeTombstones(block.m, block.deletions);
-            localStorage.setItem(keyFor(block.m, 'events'), JSON.stringify(block.events));
-            localStorage.setItem(keyFor(block.m, 'lab-results'), JSON.stringify(block.labResults));
-            localStorage.setItem(keyFor(block.m, 'dose-templates'), JSON.stringify(block.doseTemplates));
-            if (block.m === mode) {
-                setEvents(block.events);
-                setLabResults(block.labResults);
-                setDoseTemplates(block.doseTemplates);
-            }
-        }
-
-        // Scalars keep the winning side's stamp rather than being restamped
-        // "now" — restamping would make every sync look like a fresh local edit
-        // and let a stale value beat a newer one on the next round.
-        if (state.weight !== undefined && isPlausibleBodyWeightKG(state.weight)) {
-            setWeightState(state.weight);
-            localStorage.setItem(sharedKey('weight'), String(state.weight));
-            if (state.weightUpdatedAt > 0) localStorage.setItem(sharedKey('weight-at'), String(state.weightUpdatedAt));
-        }
-        if (state.pkParams !== undefined) {
-            const next = sanitizePKParams(state.pkParams);
-            setPkParamsState(next);
-            if (next) localStorage.setItem(sharedKey('pk-params'), JSON.stringify(next));
-            else localStorage.removeItem(sharedKey('pk-params'));
-            if (state.pkParamsUpdatedAt > 0)
-                localStorage.setItem(sharedKey('pk-params-at'), String(state.pkParamsUpdatedAt));
-        }
+        // The helper sanitises both modes before writing. It can still leave
+        // partial localStorage writes if a later setItem throws; the helper
+        // returns only after all writes succeed, and no transaction is claimed.
+        const applied = applySyncedStateToStorage(localStorage, owner, mode, state);
+        setEvents(applied.active.events);
+        setLabResults(applied.active.labResults);
+        setDoseTemplates(applied.active.doseTemplates);
+        if (applied.weight !== undefined) setWeightState(applied.weight);
+        if (applied.pkParams !== undefined) setPkParamsState(applied.pkParams);
     };
 
     return {
