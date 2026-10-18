@@ -18,7 +18,7 @@ import { type ModeKey } from '../src/utils/syncMerge';
 /** Synthetic values only. No fixture contains real health data or secrets. */
 const OWNER = 'local';
 const CREATED_AT = '2030-01-01T00:00:00.000Z';
-const TOMBSTONE_AT = 1_900_000_000_000;
+const TOMBSTONE_AT = 123;
 
 class MemoryStorage implements StorageLike {
     readonly map = new Map<string, string>();

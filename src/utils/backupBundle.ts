@@ -39,7 +39,6 @@ import {
     modeKeyFor,
     nsFor,
     readTombstonesFromStorage,
-    writeTombstonesToStorage,
     type DoseTemplate,
     type QuickDose,
     type StorageLike,
@@ -1103,7 +1102,9 @@ export function mergeCompleteBackupBundleToStorage(
             }
         }
         if (tombstoneChanged) {
-            writeTombstonesToStorage(context.storage, context.owner, mode, tombstones);
+            // Preserve the bundle's tombstones exactly. The sync writer prunes by
+            // age; a restore must not silently drop a deletion it was given.
+            context.storage.setItem(modeKeyFor(context.owner, mode, 'deletions'), JSON.stringify(tombstones));
             modeResult.deletions = tombstones;
             result.applied.push(`${mode}.deletions`);
         }
