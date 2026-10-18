@@ -225,3 +225,15 @@ change protection rules.
 4. Whether duplicate ids in a backup should reject the category or be deduplicated.
 5. Whether unknown critical fields/versions should reject the import rather than be ignored.
 6. Whether the React hook import wrappers need a separate hook/browser test harness.
+
+## Tools checkpoint (`Recovery/Tools`)
+
+- **Branch:** `Recovery/Tools`, created from `agent/backup-schema-audit` @ `9874c40afb89b0e3c9201280ebfe8b1415548eb4`; no website UI commits included.
+- **Interface:** `docs/backup-schema-audit/TOOLS_INTERFACE.md` copied from `agent/add-gpg-website` @ `32edc7068423916f8ab7cfa416ae7bf31d2f7609`.
+- **CLI:** standalone Go module at `tools/hrt-cold/` using gopenpgp `v3.5.2`; commands `keygen`, `encrypt`, `decrypt`, `inspect`.
+- **Container:** experimental Phase 1F-aligned `HRTB` header (magic, u16 version, u16 flags, u64 payload length, binary OpenPGP payload). It is **not stable**.
+- **Safety:** no-overwrite `CreateTemp` + fsync + `os.Link` publish; container/envelope validation; wrong key/passphrase, tamper, truncation, unknown version, oversized input, existing output, and write-failure tests. No physical-erasure claim.
+- **Local Linux checks:** `gofmt` clean; `go vet` PASS; `go test -count=1 -v ./...` PASS (23 top-level tests, 45 subtests); `go test -race` PASS; `go build` PASS; `go mod verify` PASS.
+- **Windows:** native `windows-latest` workflow added; test binary cross-compiles locally; native execution result is recorded by the first CI run, not assumed from Linux.
+- **Files:** `tools/hrt-cold/HANDOFF.md` (checkpoint details), `tools/hrt-cold/README.md`, `tools/hrt-cold/THIRD_PARTY_NOTICES.md`, `.github/workflows/tools-hrt-cold.yml`.
+- **Still blocked:** `.hrtb` format stability, License Gate, Docker, production website integration, L3 browser tests, merge, release, and PR. Do not treat this checkpoint as unblocking any of them.
