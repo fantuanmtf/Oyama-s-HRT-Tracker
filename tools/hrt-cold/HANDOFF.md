@@ -50,10 +50,32 @@ pull request.
 - `encrypt`: validates the website `oyama-hrt-complete-backup` envelope and
   version, encrypts to the recipient public key, wraps in `.hrtb`, no
   compression, no overwrite.
-- `decrypt`: validates container, decrypts and verifies OpenPGP integrity,
-  validates the bundle envelope, writes atomically, no overwrite.
-- `inspect`: reads container metadata and unencrypted recipient key IDs without
-  decrypting; `--recipient` maps a key ID to the full fingerprint.
+- `decrypt`: validates container, requires a genuinely encrypted OpenPGP
+  message, verifies OpenPGP integrity, validates the bundle envelope, writes
+  atomically, no overwrite.
+- `inspect`: reads container metadata and unauthenticated PKESK recipient
+  identifiers without decrypting; `--recipient` compares the advertised key ID
+  to the supplied key for information only. It never verifies the recipient.
+
+## Security remediation after checkpoint
+
+Two review findings were fixed on top of the checkpoint:
+
+- **P0 — unencrypted OpenPGP payload accepted.** `decrypt` now checks
+  go-crypto message metadata (`IsEncrypted` and `DecryptedWith`) and consumes
+  the literal body to EOF so the MDC/integrity check runs. Literal,
+  compressed-plaintext, and signed-only payloads fail without creating an
+  output file.
+- **P1 — unauthenticated PKESK shown as recipient proof.** `inspect` now labels
+  recipient metadata as advertised/unverified, always emits
+  `recipientVerified: false`, and treats `--recipient` matching as
+  informational. It rejects containers without a public-key recipient and
+  encrypted data packet.
+
+Regression tests cover literal, compressed-plaintext, signed-only, missing
+recipient, missing encrypted payload, forged PKESK key ID, wrong key,
+tamper, and truncation, and assert that no output file is created on failure.
+This is an engineering fix with regression tests, not a cryptographic audit.
 
 ## Container and limits
 
@@ -76,8 +98,8 @@ Working directory: `tools/hrt-cold` on Linux/amd64 with Go 1.27.1.
 | --- | --- |
 | `gofmt -l .` | clean |
 | `go vet ./...` | PASS |
-| `go test -count=1 -v ./...` | PASS — 23 top-level tests, 45 subtests, `ok ... 9.832s` |
-| `go test -race -count=1 ./...` | PASS — `ok ... 16.804s` |
+| `go test -count=1 -v ./...` | PASS — 26 top-level tests, 50 subtests, `ok ... 6.826s` |
+| `go test -race -count=1 ./...` | PASS — `ok ... 16.482s` |
 | `go build -trimpath ./...` | PASS |
 | `go mod verify` | PASS — `all modules verified` |
 | `git diff --check` | PASS |
@@ -116,6 +138,12 @@ Tests use fresh keys generated at test time and synthetic data only. Covered:
 - wrong passphrase;
 - tampered ciphertext (MDC failure);
 - truncated container;
+- unencrypted literal payload;
+- compressed-plaintext payload;
+- signed-only payload;
+- forged PKESK recipient key ID;
+- container with no public-key recipient;
+- container with no encrypted data packet;
 - unknown container version;
 - reserved flags;
 - bad magic;
@@ -127,7 +155,8 @@ Tests use fresh keys generated at test time and synthetic data only. Covered:
 - atomic no-replace publication and eight concurrent writers with exactly one
   winner;
 - no `.hrt-cold-*` temp leaks after tested failures;
-- `inspect` fingerprint matching and wrong-recipient rejection;
+- `inspect` rejects invalid payloads and reports advertised-recipient matches
+  as unverified information;
 - passphrase-file mode rejection on Unix.
 
 ## Platform status
@@ -169,6 +198,8 @@ a legal opinion. **License Gate remains BLOCKED.**
 - The `.hrtb` format is experimental and not stable.
 - No signature or sender authentication; recipient fingerprint display is not
   trust establishment.
+- PKESK recipient key IDs/fingerprints are unauthenticated and `inspect` only
+  reports advertised values; a match is not recipient verification.
 - No anti-rollback, key rotation, revocation workflow, recovery kit, or recovery
   drill.
 - Bundle record semantics are not re-implemented; the website importer remains

@@ -87,9 +87,14 @@ hrt-cold decrypt \
 ```
 
 - Validates the container before using the key.
+- Requires a genuinely encrypted OpenPGP message: at least one public-key
+  encrypted session-key packet and an integrity-protected encrypted data packet.
+  A literal, compressed-plaintext, or signed-only payload is rejected without
+  writing output.
 - Verifies the OpenPGP integrity check and rejects a wrong key, wrong
   passphrase, tampered ciphertext, truncation, unknown version, reserved flags,
-  or trailing bytes.
+  or trailing bytes. The private key must actually decrypt the session key; a
+  message that did not use the supplied key is not accepted.
 - Re-validates the complete-backup envelope after decryption.
 - Writes the exact decrypted bytes, mode `0600` on Unix, only after all checks
   pass. An existing output is never replaced.
@@ -101,13 +106,25 @@ hrt-cold inspect --in complete-backup.hrtb
 hrt-cold inspect --in complete-backup.hrtb --recipient backup-public.asc
 ```
 
-- Reads only the outer container and unencrypted OpenPGP recipient packets. It
-  does not decrypt the payload and prints `decrypted: false`.
+- Reads only the outer container and the unauthenticated OpenPGP public-key
+  encrypted session-key (PKESK) packets. It does not decrypt the payload and
+  prints `decrypted: false`.
 - Always shows magic, container version, flags, payload length, payload SHA-256,
-  and recipient key IDs.
-- A v4 OpenPGP session-key packet carries a key ID, not a full fingerprint.
-  Supply `--recipient` to map the key ID to the recipient's full fingerprint;
-  inspect fails if the container is not encrypted to that key.
+  recipient count, `advertisedRecipientKeyID`, `advertisedRecipientFingerprint`
+  when the packet carries one, and `recipientVerified: false`.
+- PKESK recipient identifiers are chosen by whoever constructed the container
+  and are **not authenticated**. They do not prove that the container is
+  encrypted to a particular key, and a forged packet can advertise any key ID.
+- Supplying `--recipient` only compares the advertised identifiers with the
+  supplied public key. It prints `suppliedRecipientFingerprint`,
+  `advertisedRecipientMatchesSupplied`, and any
+  `advertisedRecipientMatchFingerprint` values on a best-effort basis. This is
+  informational; a mismatch does not fail `inspect`, and a match is not
+  recipient verification. Only a successful `decrypt` demonstrates that the
+  private key participated.
+- `inspect` rejects a payload that is not a public-key-encrypted OpenPGP
+  message: literal, compressed-plaintext, signed-only, recipient-less, and
+  payload-less containers fail instead of being reported as valid backups.
 - `inspect` cannot detect tampering of the ciphertext because it does not
   decrypt or verify the MDC. Use `decrypt` for integrity verification.
 
@@ -130,9 +147,12 @@ Rules enforced by this implementation:
 - The payload length must be non-zero and must match the remaining file
   exactly. Truncation and trailing bytes are rejected.
 - Unknown versions and any non-zero flags are rejected. There is no downgrade
-  or fallback to plaintext.
+  or fallback to plaintext: `decrypt` and `inspect` require an encrypted OpenPGP
+  message. Literal, compressed-plaintext, and signed-only payloads are rejected.
 - The payload is a standard OpenPGP message. This tool encrypts without
   compression. No custom cryptography or KDF is defined.
+- A decryptable payload must contain at least one public-key encrypted
+  session-key packet followed by an integrity-protected encrypted data packet.
 - The plaintext bundle is at most 15 MiB, leaving room for OpenPGP overhead
   inside the 16 MiB container.
 
@@ -170,6 +190,9 @@ swap, crash dumps, and copies may retain data.
 - Encryption is public-key OpenPGP to the supplied recipient. There is no
   signature, sender authentication, or proof that the bundle came from a
   particular device.
+- Recipient key IDs and fingerprints shown by `inspect` are unauthenticated
+  PKESK advertisements, not proof of encryption to that key. Only a successful
+  `decrypt` shows that a private key participated.
 - Fingerprint display does not establish trust. Compare the full fingerprint
   through an independent channel before encrypting.
 - There is no anti-rollback, remote attestation, or protection from a
@@ -179,6 +202,9 @@ swap, crash dumps, and copies may retain data.
   recovery drills.
 - Backups and keys must be stored and transported separately. This tool does
   not provide physical erasure.
+- This is an engineering checkpoint with regression tests, not an independent
+  cryptographic audit. OpenPGP and MDC behavior are delegated to the linked
+  go-crypto/gopenpgp libraries.
 
 ## Validation boundaries
 
@@ -197,9 +223,11 @@ keys, passphrases, real health data, or production backups are committed.
 
 Coverage includes round-trip encryption/decryption, wrong key, wrong passphrase,
 tamper, truncation, unknown version, reserved flags, bad magic, trailing bytes,
-existing output, oversized input, malformed bundle, missing output parent,
-atomic no-replace publication, concurrent writers, temp cleanup, inspect
-fingerprint matching, and passphrase-file mode checks on Unix.
+unencrypted literal, compressed-plaintext, and signed-only payloads, forged
+PKESK recipient key IDs, missing recipient/encrypted-payload packets, existing
+output, oversized input, malformed bundle, missing output parent, atomic
+no-replace publication, concurrent writers, temp cleanup, advertised-recipient
+matching, and passphrase-file mode checks on Unix.
 
 ## License
 

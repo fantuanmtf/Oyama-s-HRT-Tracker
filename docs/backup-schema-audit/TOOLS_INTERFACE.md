@@ -13,6 +13,18 @@ project. The website does **not** encrypt or decrypt this file.
 - The website does not add OpenPGP.js/LGPL or any runtime dependency for this
   format, and never stores or asks for a private key or passphrase.
 
+## Tools encryption requirements
+
+- A Tools decryptor must require a genuinely encrypted OpenPGP message, not
+  merely a parseable OpenPGP payload. Literal, compressed-plaintext, and
+  signed-only payloads must be rejected without producing a bundle.
+- OpenPGP public-key encrypted session-key (PKESK) recipient key IDs and
+  fingerprints are unauthenticated metadata. Tools may display them as
+  advertised values, but must not present them as recipient verification.
+  Only successful decryption shows that a private key participated.
+- A failed decryption, wrong key, failed integrity check, or unencrypted
+  payload must not write a plaintext bundle output.
+
 ## Envelope
 
 ```json
@@ -120,7 +132,8 @@ A Tools implementation can treat the file as opaque JSON:
 1. Read the website file.
 2. Encrypt it with the user's OpenPGP public key (or decrypt an armored file)
    entirely offline.
-3. Write the plaintext bundle back for the website import path.
+3. Write the plaintext bundle back for the website import path only after a
+   successful encrypted-message decrypt and integrity check.
 
 The website does not call Tools, does not launch it, and does not exchange keys
 or passphrases with it.
