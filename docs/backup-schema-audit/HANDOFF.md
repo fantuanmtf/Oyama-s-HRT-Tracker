@@ -145,3 +145,15 @@ change protection rules.
 - **Transaction risk:** restore spans multiple `localStorage` keys; there is no transaction or proven rollback. All-or-nothing restore remains BLOCKED.
 - **Coverage matrix:** L2-01 to L2-17; see the document.
 - **Push:** pending until this work item is committed.
+
+## L2 product/platform supplement
+
+- **Confirmed Option B scope:** events, labResults, doseTemplates, deletions, weight, pkParams, quickDoses, supplies, plan/planItems, calibrationMethod, calibrationHistoryMode.
+- **Preference whitelist:** `theme` = `app-theme` and `language` = `hrt-lang` confirmed; `display` and `reminders` are UNKNOWN category-to-key mappings pending human decision. Do not invent keys.
+- **Never included:** auth token/session/password, cloud key, private keys/passphrases, device passes, TOTP, passkeys, device identity.
+- **Conflict rules:** same ID without reliable `updatedAt` must preserve both or remain pending; no silent overwrite or discard. Merge must report added/updated/skipped/conflict/invalid. Corrupt/unsafe input is rejected before writes.
+- **Replace:** preview account/mode/categories/counts, explicit confirmation, and rollback or verified atomic commit; otherwise BLOCKED.
+- **Platform scope:** Windows and Linux only. Linux no-replace link behavior is PASS from Phase 1F; Windows `os.Link`, ACL/`Chmod`, directory sync, path and concurrency behavior are NOT_TESTED. Apple platforms are out of scope.
+- **L2 matrix:** L2-01..L2-24, including product-scope, preference mapping, conflict reporting, replace preview, and Windows/Linux tests.
+- **Status:** L2 design PASS; L2 implementation BLOCKED; L3 BLOCKED; Windows NOT_TESTED; License Gate/Docker/production BLOCKED.
+- **Push:** this supplement is committed after `1e528c2`; final push status is recorded at the checkpoint.
