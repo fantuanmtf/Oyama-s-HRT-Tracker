@@ -167,3 +167,13 @@ change protection rules.
 - **Platform:** Linux only. Windows `os.Link`, ACL/permissions, path and concurrency behavior NOT_TESTED.
 - **Status:** L2 Seam A implementation PASS for tested surface; production restore/export/rollback NOT implemented; Option B still NEEDS_HUMAN_APPROVAL; License Gate/Docker/production BLOCKED.
 - **Push:** implementation commit and this handoff update are recorded at the checkpoint.
+
+## Platform file-publish CI (Linux/Windows)
+
+- **Workflow:** `.github/workflows/platform-filepublish.yml` runs on pull requests, pushes to `main` and `agent/**`, and manual dispatch. Matrix: `ubuntu-latest` and `windows-latest`; read-only permissions; `go vet` and `go test` in `tests/platform/filepublish`.
+- **Harness:** test-only Go module using only the standard library. `AtomicWrite` uses `CreateTemp`, fsync, close, and `os.Link` no-replace publish; `CleanupStaleTemps` only removes regular `.hrt-tmp-*` files older than one hour.
+- **Matrix:** `P-01`..`P-12` in `PLATFORM_TEST_MATRIX.md`: existing target unchanged, eight concurrent writers with one winner, cleanup ownership, missing parent, Unix `0600`, Unicode/space path, directory fsync best-effort, crash cleanup, Windows ACL/hard-link/SMB/file-lock behavior.
+- **Local Linux:** `go test -v ./...` 6/6 PASS in 0.056s.
+- **Windows:** native CI is configured; actual Windows execution and ACL/hard-link/file-lock behavior remain `NOT_TESTED`.
+- **Status:** platform harness PASS on Linux; Windows `NOT_TESTED`; crash cleanup `REVIEW_REQUIRED`; production Replace/Merge, atomic restore, License Gate, Docker and production integration remain `BLOCKED`.
+- **Push:** pending at the time of this handoff; final checkpoint records the remote SHA.
