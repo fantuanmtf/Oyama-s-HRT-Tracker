@@ -235,6 +235,8 @@ change protection rules.
 - **Implementation commits:**
   - `0e80021` — `feat: add complete backup bundle data layer`
   - `b70ac2d` — `feat: wire unencrypted complete backup export and merge import`
+  - `1c45860` — `fix: reject non-positive supply lead days`
+  - `f05d92c` — `fix: preserve bundle tombstones exactly`
 - **Files:**
   - `src/utils/backupBundle.ts` — versioned envelope, strict validators,
     export builder, preview/conflict inspector, merge-only import.
@@ -268,8 +270,8 @@ change protection rules.
   reliable newer `updatedAt` updates; older is skipped; same id without a
   reliable timestamp, equal timestamps with different content, or any same id
   in quick doses/supplies/plan aborts that category (`C1-A`). Duplicate ids
-  abort the category. Tombstones are unioned; restored records clear their own
-  tombstones.
+  abort the category. Tombstones are unioned and written back exactly (no age
+  pruning at restore); restored records clear their own tombstones.
 - **Replace:** not implemented; explicitly marked `BLOCKED`. No all-or-nothing
   or rollback claim is made.
 - **Encryption:** none added. No OpenPGP.js/LGPL, no keys, no passphrases, no
@@ -278,12 +280,13 @@ change protection rules.
 - **Checks actually run:**
   - `npx tsc --noEmit` — pass.
   - `node node_modules/vitest/vitest.mjs run` — 18 files passed; 387 tests
-    passed, 4 expected fail (391 total); 23.32s.
+    passed, 4 expected fail (391 total); 26.84s.
   - `node node_modules/vitest/vitest.mjs run tests/backupBundle.test.ts` — 10/10
     pass.
   - `npx prettier --check` on changed source/test files — pass.
   - `npx eslint src/utils/backupBundle.ts tests/backupBundle.test.ts` — no
     errors.
+  - `npm run build` — Vite production build pass (chunk-size warning only).
   - `git diff --check` — pass.
 - **Synthetic coverage:** both-mode round-trip, all six pack branches, string
   and malformed pack rejection, duplicate ids, invalid records, unknown
