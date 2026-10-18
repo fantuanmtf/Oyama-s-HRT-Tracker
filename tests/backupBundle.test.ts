@@ -451,6 +451,7 @@ describe('complete backup bundle data layer', () => {
             ]),
         );
         expect(sanitized.invalid).toEqual([]);
+        expect(sanitizePortablePreferences({ 'hrt-supply-lead-days': 0 }).invalid).toEqual(['hrt-supply-lead-days']);
 
         const storage = new MemoryStorage();
         storage.setItem('app-theme', 'mono');

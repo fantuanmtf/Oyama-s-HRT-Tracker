@@ -534,7 +534,7 @@ export function sanitizePortablePreferences(raw: unknown): {
                 else invalid.push(key);
                 break;
             case 'hrt-supply-lead-days':
-                if (isFiniteNumber(value) && value >= 0 && value <= 3650) values['hrt-supply-lead-days'] = value;
+                if (isFiniteNumber(value) && value > 0 && value <= 3650) values['hrt-supply-lead-days'] = value;
                 else invalid.push(key);
                 break;
             default:
@@ -560,7 +560,7 @@ export function readPortablePreferences(storage: StorageLike): PortablePreferenc
     const leadDays = storage.getItem('hrt-supply-lead-days');
     if (leadDays !== null) {
         const n = Number(leadDays);
-        if (isFiniteNumber(n) && n >= 0 && n <= 3650) values['hrt-supply-lead-days'] = n;
+        if (isFiniteNumber(n) && n > 0 && n <= 3650) values['hrt-supply-lead-days'] = n;
     }
     return values;
 }
