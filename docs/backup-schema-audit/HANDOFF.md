@@ -18,10 +18,10 @@ Docker, or releases.
 
 ## Commits
 
-| Commit | Purpose |
-|---|---|
-| `4f36e1b` | Map production data model, persistence, export, and sync behavior |
-| `cb4cd10` | Document export/restore coverage gaps and test blind spots |
+| Commit    | Purpose                                                                       |
+| --------- | ----------------------------------------------------------------------------- |
+| `4f36e1b` | Map production data model, persistence, export, and sync behavior             |
+| `cb4cd10` | Document export/restore coverage gaps and test blind spots                    |
 | `f218d99` | Define current-record vs complete-device backup scope and synthetic test plan |
 
 ## Evidence
@@ -225,3 +225,86 @@ change protection rules.
 4. Whether duplicate ids in a backup should reject the category or be deduplicated.
 5. Whether unknown critical fields/versions should reject the import rather than be ignored.
 6. Whether the React hook import wrappers need a separate hook/browser test harness.
+
+## Website complete-backup bundle checkpoint (2026-10-19)
+
+- **Branch:** `agent/add-gpg-website`, created from the approved audit tip
+  `9874c40` (a descendant of `Privacy/Add-GPG` @ `5c5d9fe`). The audit tip
+  already carries the L2 seams `0918bee` and `fa4c416`, so no cherry-picks or
+  history rewrites were needed.
+- **Implementation commits:**
+  - `0e80021` — `feat: add complete backup bundle data layer`
+  - `b70ac2d` — `feat: wire unencrypted complete backup export and merge import`
+- **Files:**
+  - `src/utils/backupBundle.ts` — versioned envelope, strict validators,
+    export builder, preview/conflict inspector, merge-only import.
+  - `tests/backupBundle.test.ts` — 10 synthetic tests.
+  - `src/hooks/useAppData.ts` — export/preview/apply wrappers; active-mode state
+    install after merge.
+  - `src/App.tsx` — bundle detection in the existing import path, preview
+    dialog, preference application, export download.
+  - `src/components/ExportSection.tsx`, `src/pages/ExportSettings.tsx`,
+    `src/pages/ImportSettings.tsx` — unencrypted labels and Tools guidance.
+  - `src/i18n/translations.ts` — Chinese and English strings; other packs fall
+    back to English.
+  - `docs/backup-schema-audit/TOOLS_INTERFACE.md` — hand-off format and
+    offline Tools boundary.
+- **Envelope:** `format: "oyama-hrt-complete-backup"`, `formatVersion: 1`,
+  `createdAt`, `mode`, `modes`, `weight`/`weightUpdatedAt`,
+  `pkParams`/`pkParamsUpdatedAt`, `calibration`, `preferences`.
+- **Covered data:** per-mode events, labs, templates, deletions, quick doses,
+  supplies, plan; shared weight and PK params; calibration method/history
+  mode; portable preferences.
+- **Supply.pack:** production object union only
+  (`vial|pill|pump|sachet|patch|bulk`). String packs, unknown kinds, and missing
+  branch fields reject the supplies category; no legacy string coercion.
+- **Preference allowlist:** `app-theme`, `hrt-lang`, `app-show-prediction`,
+  `app-hide-site-label`, `hrt-supply-lead-days` only. `app-auto-backup`,
+  `app-dev-mode`, onboarding/site-notice flags, cosmetic settings, and all
+  credentials are excluded by construction.
+- **Import:** parse and validate the entire envelope, show creation time,
+  source mode, per-mode counts, conflicts, invalid records, blocked categories,
+  and ignored preferences, then merge only safe categories. Same id with a
+  reliable newer `updatedAt` updates; older is skipped; same id without a
+  reliable timestamp, equal timestamps with different content, or any same id
+  in quick doses/supplies/plan aborts that category (`C1-A`). Duplicate ids
+  abort the category. Tombstones are unioned; restored records clear their own
+  tombstones.
+- **Replace:** not implemented; explicitly marked `BLOCKED`. No all-or-nothing
+  or rollback claim is made.
+- **Encryption:** none added. No OpenPGP.js/LGPL, no keys, no passphrases, no
+  cold-backup encryption claim. The website file is plaintext JSON; encryption
+  belongs to the offline Tools workflow (`TOOLS_INTERFACE.md`).
+- **Checks actually run:**
+  - `npx tsc --noEmit` — pass.
+  - `node node_modules/vitest/vitest.mjs run` — 18 files passed; 387 tests
+    passed, 4 expected fail (391 total); 23.32s.
+  - `node node_modules/vitest/vitest.mjs run tests/backupBundle.test.ts` — 10/10
+    pass.
+  - `npx prettier --check` on changed source/test files — pass.
+  - `npx eslint src/utils/backupBundle.ts tests/backupBundle.test.ts` — no
+    errors.
+  - `git diff --check` — pass.
+- **Synthetic coverage:** both-mode round-trip, all six pack branches, string
+  and malformed pack rejection, duplicate ids, invalid records, unknown
+  format/version, empty-vs-missing arrays, same-id conflict abort, newer/older
+  timestamp behavior, preference whitelist, and credential exclusion from both
+  export and import.
+- **Status:** website complete-backup data layer and UI checkpoint `PASS` for
+  the tested surface. This is not production readiness, not a security audit,
+  not OpenPGP/cold-backup encryption, and not a proven restore rollback.
+- **Not proven / remaining:** no browser/L3 end-to-end test for the new rows or
+  dialog; no multi-key transaction; no Replace; no Tools-side OpenPGP command;
+  Windows/Linux browser behavior and platform file handling remain outside this
+  checkpoint.
+- **Push:** pending at the time of this handoff; the final checkpoint records
+  the remote SHA for `origin/agent/add-gpg-website`.
+
+### Open decisions after the website checkpoint
+
+1. Replace/rollback transaction design remains `BLOCKED`.
+2. Whether local-only records should gain `updatedAt`/tombstones.
+3. Whether a future UI should let the user resolve same-id conflicts per
+   category instead of aborting the category.
+4. Tools-side OpenPGP CLI/file behavior and its own test matrix.
+5. Browser/L3 test harness for export, preview, merge, and preference effects.
