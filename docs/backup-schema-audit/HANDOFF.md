@@ -177,3 +177,10 @@ change protection rules.
 - **Windows:** native CI is configured; actual Windows execution and ACL/hard-link/file-lock behavior remain `NOT_TESTED`.
 - **Status:** platform harness PASS on Linux; Windows `NOT_TESTED`; crash cleanup `REVIEW_REQUIRED`; production Replace/Merge, atomic restore, License Gate, Docker and production integration remain `BLOCKED`.
 - **Push:** pending at the time of this handoff; final checkpoint records the remote SHA.
+
+### Platform CI actual result
+
+- GitHub Actions run `39147752217` for head `7a7d00ac1676e290fbefe05ab496674d37d5baa5` completed `success`.
+- Both `File publish (ubuntu-latest)` and `File publish (windows-latest)` jobs passed.
+- URL: https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39147752217
+- Windows ACL equivalence, SMB/network filesystem behavior, cross-process locking, crash cleanup and application-level atomic restore remain `NOT_TESTED`/`BLOCKED`.

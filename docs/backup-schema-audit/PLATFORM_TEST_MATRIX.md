@@ -71,3 +71,12 @@ Workflow: `.github/workflows/platform-filepublish.yml`
 3. Whether directory fsync is required or documented as best-effort.
 4. Whether cross-process locking is needed for the future CLI.
 5. Where native CI evidence is retained.
+
+## Actual CI run
+
+- **Run:** GitHub Actions `39147752217` — `Platform file-publish tests`.
+- **Head:** `7a7d00ac1676e290fbefe05ab496674d37d5baa5`.
+- **Result:** completed `success`; both `File publish (ubuntu-latest)` and `File publish (windows-latest)` jobs succeeded.
+- **URL:** https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39147752217
+- **Scope:** the Go harness tests for existing-target protection, concurrent publishing, cleanup, missing parent, Unix mode and Unicode/space paths passed on both runners.
+- **Still not proven:** Windows ACL equivalence to Unix `0600`, hard-link privilege/edge cases, SMB/network filesystem behavior, cross-process file locking, crash cleanup, and application-level Replace/Merge atomicity. These remain `NOT_TESTED` or `BLOCKED`.
