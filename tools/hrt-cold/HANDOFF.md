@@ -1,18 +1,19 @@
 # Tools Checkpoint — hrt-cold
 
-**Status:** Tools branch checkpoint complete and pushed to `origin/Recovery/Tools`;
-native Ubuntu and Windows CI passed. The `.hrtb` format remains experimental and
-is **not stable**. This checkpoint does **not** unblock the License Gate,
-Docker, production website integration, L3 browser tests, merge, release, or a
-pull request.
+**Status:** Tools branch checkpoint complete and pushed to `origin/Recovery/Tools`.
+The `.hrtb` format remains experimental and is **not stable**. Signing,
+pinned-key verification, and local anti-replay are implemented; the website's
+direct plaintext import path remains unauthenticated. This checkpoint does
+**not** unblock the License Gate, Docker, production website integration, a
+release, or a pull request.
 
 ## Branch and baseline
 
 - **Branch:** `Recovery/Tools`
 - **Base:** `agent/backup-schema-audit` @ `9874c40afb89b0e3c9201280ebfe8b1415548eb4`
 - **History:** branched from the audit work; no website UI commits were included.
-- **Interface contract:** `docs/backup-schema-audit/TOOLS_INTERFACE.md`, copied
-  from `agent/add-gpg-website` at `32edc7068423916f8ab7cfa416ae7bf31d2f7609`.
+- **Interface contract:** `docs/backup-schema-audit/TOOLS_INTERFACE.md`, synced
+  from the `agent/add-gpg-website` review in `6e27748`.
 
 ## Commits
 
@@ -23,14 +24,17 @@ pull request.
 | `07cc714` | `ci(tools): test hrt-cold on Linux and Windows` |
 | `adb564f` | `docs(tools): record Tools checkpoint` |
 | `f73f0c9` | `fix(tools): reject packets after encrypted OpenPGP payload` |
+| `6e27748` | `docs(tools): sync audit, recovery demo, and platform CI` |
+| `d2ef418` | `feat(tools): sign, verify, and reject replayed cold backups` |
 
 ## Files
 
 - `tools/hrt-cold/go.mod`, `go.sum` — standalone module pinned to gopenpgp
   `v3.5.2`.
 - `tools/hrt-cold/main.go` — CLI entry point and command flags.
-- `tools/hrt-cold/pgp.go` — key generation, encryption, decryption, recipient
-  inspection.
+- `tools/hrt-cold/pgp.go` — key generation, signing, encryption, decryption,
+  signature verification, recipient inspection.
+- `tools/hrt-cold/replay.go` — local verified-backup high-water mark.
 - `tools/hrt-cold/container.go` — experimental `HRTB` container parser/builder.
 - `tools/hrt-cold/bundle.go` — complete-backup envelope validation.
 - `tools/hrt-cold/atomicfile.go` — temp + fsync + hard-link no-replace publish.
@@ -48,11 +52,15 @@ pull request.
 - `keygen`: armored public/private keys, passphrase-locked private key, full
   fingerprint output, no overwrite.
 - `encrypt`: validates the website `oyama-hrt-complete-backup` envelope and
-  version, encrypts to the recipient public key, wraps in `.hrtb`, no
-  compression, no overwrite.
+  version; optionally signs the plaintext with `--signer-private` and
+  `--signer-passphrase-file`; encrypts to the recipient public key, wraps in
+  `.hrtb`, no compression, no overwrite. Prints signer fingerprint and
+  plaintext SHA-256.
 - `decrypt`: validates container, requires a genuinely encrypted OpenPGP
-  message, verifies OpenPGP integrity, validates the bundle envelope, writes
-  atomically, no overwrite.
+  message, verifies OpenPGP integrity; with `--verify-key`, requires a valid
+  signature from the pinned key; for verified backups, enforces a local replay
+  high-water mark; validates the bundle envelope, writes atomically, no
+  overwrite.
 - `inspect`: reads container metadata and unauthenticated PKESK recipient
   identifiers without decrypting; `--recipient` compares the advertised key ID
   to the supplied key for information only. It never verifies the recipient.
@@ -86,6 +94,36 @@ hidden-recipient messages, legal marker packets, wrong key, tamper, and
 truncation, and assert that no output file is created on failure. This is an
 engineering fix with regression tests, not a cryptographic audit.
 
+## Signing, provenance, and anti-replay
+
+`encrypt` signs the plaintext bundle when `--signer-private` and
+`--signer-passphrase-file` are supplied. Sign-then-encrypt keeps the signer
+identity inside the ciphertext, and the signature covers `createdAt`, every
+record, and future envelope fields without changing the `.hrtb` container or
+the website format. The signing key may be the recipient key or a separate key
+pair; separate keys keep signing and decryption authority apart.
+
+`decrypt --verify-key` pins the signer public key. The message must be signed,
+the signature must verify, and it must come from that key or one of its
+subkeys; otherwise decryption fails without writing output. Output reports
+`signatureVerified`, `signerFingerprint`, `signerPrimaryFingerprint`, and
+`contentSha256`. Without `--verify-key`, legacy unsigned backups still decrypt
+with a warning and `signatureVerified: false`; no provenance is claimed.
+
+Verified decrypts use a local high-water mark keyed by signer primary
+fingerprint. It defaults to `<user-config>/hrt-cold/replay.json` (mode `0600`;
+group/world-writable state is refused), overridable with `--replay-state`.
+Newer bundles are accepted and raise the mark; exact repeats are accepted;
+older `createdAt` or same-time-different content is refused unless
+`--allow-older`, and an override never lowers the mark. `--no-replay-check`
+performs a deliberate restore without reading or updating state.
+
+This is local rollback detection, not global freshness. A fresh device, a
+deleted state file, a compromised signer key, or a malicious binary defeats it.
+It also cannot authenticate the website's direct plaintext JSON import; that
+path has no keys or signature. Website-level provenance would require changing
+the website's no-keys boundary and is not implemented.
+
 ## Container and limits
 
 Experimental Phase 1F-aligned container:
@@ -107,36 +145,41 @@ Working directory: `tools/hrt-cold` on Linux/amd64 with Go 1.27.1.
 | --- | --- |
 | `gofmt -l .` | clean |
 | `go vet ./...` | PASS |
-| `go test -count=1 -v ./...` | PASS — 32 top-level tests, 62 subtests, `ok ... 8.193s` |
-| `go test -race -count=1 ./...` | PASS — `ok ... 18.452s` |
+| `go test -count=1 -v ./...` | PASS — 101 tests, `ok ... 15.969s` |
+| `go test -race -count=1 ./...` | PASS — `ok ... 36.040s` |
 | `go build -trimpath ./...` | PASS |
 | `go mod verify` | PASS — `all modules verified` |
 | `git diff --check` | PASS |
 | `GOOS=windows GOARCH=amd64 go vet ./...` | PASS (cross-compile) |
 | `GOOS=windows GOARCH=amd64 go test -c` | PASS (test binary compiles) |
 | `GOOS=windows GOARCH=amd64 go build` | PASS (cross-compile) |
-| GitHub Actions `39152774184` | PASS — Ubuntu and Windows native jobs |
+| GitHub Actions `39152774184` | PASS — prior checkpoint's Ubuntu and Windows jobs; signing commit CI pending push |
 
 Staticcheck, govulncheck, gofumpt, and golangci-lint are not installed in this
 environment; they were not run. This is not a cryptographic audit.
 
 ### Manual Linux round-trip
 
-Commands: `keygen` → `encrypt` → `inspect` → `decrypt` on the synthetic
-fixture.
+Commands: two `keygen` runs (recipient and signer) → signed `encrypt` →
+`decrypt --verify-key` → repeat `decrypt` on the synthetic fixture.
 
-- `cmp bundle.json decrypted.json` — exit 0, exact match.
-- Bundle SHA-256: `f9bfe87717ec02e8274ac765e088a506b8d4ed57c280da22b608fef4a2aac305`.
-- Decrypted SHA-256: `f9bfe87717ec02e8274ac765e088a506b8d4ed57c280da22b608fef4a2aac305`.
-- `.hrtb` SHA-256: `04838da09353f0fad0cc47ed62ece256b53bc2e66e0003785da8c78be5571df5`.
-- Inspect reported `magic: HRTB`, `containerVersion: 1`, `containerFlags: 0`,
-  `recipientCount: 1`, recipient key ID, recipient subkey fingerprint, primary
-  fingerprint, and `decrypted: false`.
-- Modes: passphrase `0600`, private key `0600`, public key `0644`, `.hrtb`
+- `cmp bundle.json restored.json` — exit 0, exact match.
+- Bundle/decrypted SHA-256:
+  `f9bfe87717ec02e8274ac765e088a506b8d4ed57c280da22b608fef4a2aac305`.
+- Encrypt reported `signature: signed`, the signer fingerprint, and that
+  content SHA-256.
+- Decrypt reported `signatureVerified: true`, `signerPrimaryFingerprint` equal
+  to the signer key, `contentSha256` equal to the bundle hash, and
+  `replayStatus: new`.
+- The repeat decrypt reported `replayStatus: repeat` and also matched byte for
+  byte.
+- Replay state was written with mode `0600` and stored only the signer
+  fingerprint, `createdAt`, content hash, and last-seen time.
+- Modes: passphrase `0600`, private keys `0600`, public keys `0644`, `.hrtb`
   `0600`, decrypted JSON `0600`.
 - No `.hrt-cold-*` temp files remained.
-- Keys, passphrase, bundle, and outputs were under
-  `/tmp/opencode/hrt-cold-manual-20261019` and were not committed.
+- Keys, passphrase, bundle, and outputs were under a mode-`0700` temporary
+  directory and were not committed.
 
 ## Failure coverage
 
@@ -170,18 +213,26 @@ Tests use fresh keys generated at test time and synthetic data only. Covered:
 - no `.hrt-cold-*` temp leaks after tested failures;
 - `inspect` rejects invalid payloads and reports advertised-recipient matches
   as unverified information;
-- passphrase-file mode rejection on Unix.
+- passphrase-file mode rejection on Unix;
+- signed round-trip with a separate signer key and recipient key;
+- wrong pinned verification key and unsigned backup with `--verify-key`;
+- verified replay states: new, repeat, older refused, allowed older override,
+  same-time-different-content conflict, and high-water mark not lowered by an
+  override;
+- replay state round-trip, `0600` mode, corrupt version, and group/world-writable
+  state rejection.
 
 ## Platform status
 
-- **Linux:** native `go vet`, `go test`, race tests, build, and manual CLI
-  round-trip PASS.
+- **Linux:** native `go vet`, `go test`, race tests, build, and a signed manual
+  CLI round-trip PASS.
 - **Windows:** native GitHub Actions workflow run
   [39152774184](https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39152774184)
   passed both `Go tests (ubuntu-latest)` and `Go tests (windows-latest)` for
-  head `adb564f30b84376e0d3abd4d1406f6441e868cf0`. Windows ran native
-  `go vet`, `go test -count=1 -v`, and `go build`; the formatting step is
-  Linux-only.
+  the prior checkpoint. The signing commit cross-compiles and its tests compile
+  for Windows (`GOOS=windows go vet`, `go test -c`); native CI for the new
+  commit is pending push. Windows ran native `go vet`, `go test -count=1 -v`,
+  and `go build`; the formatting step is Linux-only.
 - **Windows semantics:** native tests exercised `os.Link` no-replace publish,
   Windows error mapping, atomic-write failure paths, and passphrase-file
   handling. Directory fsync durability and ACL equivalence to Unix `0600`
@@ -209,21 +260,26 @@ a legal opinion. **License Gate remains BLOCKED.**
 ## Known limitations / blockers
 
 - The `.hrtb` format is experimental and not stable.
-- No signature or sender authentication; recipient fingerprint display is not
-  trust establishment.
+- Signing and pinned-key verification exist but are opt-in. Without
+  `--signer-private` / `--verify-key`, no provenance is claimed.
+- Recipient fingerprint display is not trust establishment; compare it through
+  an independent channel.
 - PKESK recipient key IDs/fingerprints are unauthenticated and `inspect` only
   reports advertised values; a match is not recipient verification.
-- No anti-rollback, key rotation, revocation workflow, recovery kit, or recovery
-  drill.
+- Anti-replay is a local high-water mark only; a fresh device, deleted state,
+  compromised signer key, or malicious binary defeats it. It does not cover the
+  website's direct plaintext import.
+- No key rotation, revocation workflow, recovery kit, or recovery drill.
 - Bundle record semantics are not re-implemented; the website importer remains
   authoritative.
 - `inspect` cannot detect ciphertext tampering without decrypting.
 - Crash cleanup is not automatic; a crash can leave a `.hrt-cold-*` temp file.
 - Directory fsync/crash durability is best-effort.
 - No physical erasure claim.
-- Native Windows CI result is pending.
-- License Gate, Docker, production website integration, L3 browser tests, merge,
-  release, and PR remain **BLOCKED / not started**.
+- Native Windows CI for the signing commit is pending push.
+- License Gate, Docker, production website integration, release, and PR remain
+  **BLOCKED / not started**. Website L3 browser coverage lives in the separate
+  website PR, not in this Tools branch.
 
 ## Push and next step
 

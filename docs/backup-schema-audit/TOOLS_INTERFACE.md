@@ -1,9 +1,9 @@
 # Website ↔ Tools Complete-Backup Interface
 
 **Status:** website export/import data layer implemented; Replace is `BLOCKED`.
-**Tools reference:** `Recovery/Tools` @ `7ee628b6455dee31ca044e453dff31e6d17a7e56`
-(read-only), `tools/hrt-cold/`. The Tools CLI is an experimental checkpoint; the
-`.hrtb` container is not stable and is not wired into the website.
+**Tools reference:** `Recovery/Tools` @ `d2ef418` (read-only),
+`tools/hrt-cold/`. The Tools CLI is an experimental checkpoint; the `.hrtb`
+container is not stable and is not wired into the website.
 **Scope:** hand-off format between the website and the separate offline Tools
 project. The website does **not** encrypt or decrypt this file.
 
