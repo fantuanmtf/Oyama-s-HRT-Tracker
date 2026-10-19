@@ -326,6 +326,9 @@ const readStamp = (value: unknown, now?: number): Validation<number> => {
     return { value };
 };
 
+/** What normalizeSyncState gives a weight or PK value that has no stamp. */
+const UNSTAMPED_SCALAR_AT = 1;
+
 const readStampString = (value: string | null): number | undefined => {
     if (value === null || value.trim() === '') return undefined;
     const n = Number(value);
@@ -1595,27 +1598,30 @@ const planScalars = (
                 ? Number(localRaw)
                 : undefined;
         const localStamp = readStampString(context.storage.getItem(nsFor(context.owner, 'weight-at')));
+        // Same rule as cloud sync: a value without a stamp counts as the floor
+        // stamp, so a stamped value beats it. Every device stores the untouched
+        // 70 kg default without a stamp; treating that as a conflict meant a
+        // backup's weight could never be restored onto a new device.
+        const incomingAt = parsed.weightUpdatedAt ?? UNSTAMPED_SCALAR_AT;
+        const localAt = localStamp ?? UNSTAMPED_SCALAR_AT;
         let action: ScalarPreviewAction;
         if (blocked.has('weight')) {
             action = 'blocked';
         } else if (localWeight === undefined) {
             action = 'added';
-        } else if (parsed.weightUpdatedAt === undefined || localStamp === undefined) {
-            if (localWeight === parsed.weight) action = 'unchanged';
-            else {
-                action = 'conflict';
-                conflicts.push('weight exists on both sides without a reliable timestamp and the values differ');
-                blocked.add('weight');
-            }
-        } else if (parsed.weightUpdatedAt < localStamp) {
+        } else if (incomingAt < localAt) {
             action = 'skipped';
-        } else if (parsed.weightUpdatedAt > localStamp) {
+        } else if (incomingAt > localAt) {
             action = 'updated';
         } else if (localWeight === parsed.weight) {
             action = 'unchanged';
         } else {
             action = 'conflict';
-            conflicts.push('weight has equal updatedAt but different content');
+            conflicts.push(
+                parsed.weightUpdatedAt === undefined
+                    ? 'weight exists on both sides without a reliable timestamp and the values differ'
+                    : 'weight has equal updatedAt but different content',
+            );
             blocked.add('weight');
         }
         preview.weight = { action, current: localWeight, incoming: parsed.weight };
@@ -1638,27 +1644,26 @@ const planScalars = (
         } else if (localStamp !== undefined) {
             localValue = null;
         }
+        const incomingAt = parsed.pkParamsUpdatedAt ?? UNSTAMPED_SCALAR_AT;
+        const localAt = localStamp ?? UNSTAMPED_SCALAR_AT;
         let action: ScalarPreviewAction;
         if (blocked.has('pkParams')) {
             action = 'blocked';
         } else if (localValue === undefined) {
             action = 'added';
-        } else if (parsed.pkParamsUpdatedAt === undefined || localStamp === undefined) {
-            if (canonical(localValue) === canonical(parsed.pkParams)) action = 'unchanged';
-            else {
-                action = 'conflict';
-                conflicts.push('pkParams exists on both sides without a reliable timestamp and the values differ');
-                blocked.add('pkParams');
-            }
-        } else if (parsed.pkParamsUpdatedAt < localStamp) {
+        } else if (incomingAt < localAt) {
             action = 'skipped';
-        } else if (parsed.pkParamsUpdatedAt > localStamp) {
+        } else if (incomingAt > localAt) {
             action = 'updated';
         } else if (canonical(localValue) === canonical(parsed.pkParams)) {
             action = 'unchanged';
         } else {
             action = 'conflict';
-            conflicts.push('pkParams has equal updatedAt but different content');
+            conflicts.push(
+                parsed.pkParamsUpdatedAt === undefined
+                    ? 'pkParams exists on both sides without a reliable timestamp and the values differ'
+                    : 'pkParams has equal updatedAt but different content',
+            );
             blocked.add('pkParams');
         }
         preview.pkParams = { action, current: localValue, incoming: parsed.pkParams };

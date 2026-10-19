@@ -787,6 +787,57 @@ describe('complete backup bundle data layer', () => {
         expect(pkPreview.blocked).toContain('pkParams');
     });
 
+    it('restores a stamped weight onto a device that only holds the unstamped 70 kg default', () => {
+        // Every device persists the default weight without a stamp the first
+        // time the app opens, so this is what a brand-new device looks like.
+        const bundle = build(seed());
+        bundle.weight = 62;
+        bundle.weightUpdatedAt = 3333;
+        const fresh = new MemoryStorage();
+        fresh.setItem('hrt-weight', '70');
+
+        const preview = inspectCompleteBackupBundle(bundle, context(fresh));
+        expect(preview.scalars.weight).toMatchObject({ action: 'updated', current: 70, incoming: 62 });
+        expect(preview.blocked).not.toContain('weight');
+
+        const result = mergeCompleteBackupBundleToStorage(bundle, context(fresh));
+        expect(result.weight).toBe(62);
+        expect(fresh.getItem('hrt-weight')).toBe('62');
+        expect(fresh.getItem('hrt-weight-at')).toBe('3333');
+    });
+
+    it('keeps a stamped local weight or PK value over an unstamped one from the bundle', () => {
+        const bundle = build(seed());
+        bundle.weight = 62;
+        delete bundle.weightUpdatedAt;
+        bundle.pkParams = { ...DEFAULT_PK_PARAMS, e2_kClear: 0.5 };
+        delete bundle.pkParamsUpdatedAt;
+
+        const local = new MemoryStorage();
+        local.setItem('hrt-weight', '80');
+        local.setItem('hrt-weight-at', '2222');
+        local.setItem('hrt-pk-params', JSON.stringify({ ...DEFAULT_PK_PARAMS, e2_kClear: 0.11 }));
+        local.setItem('hrt-pk-params-at', '2222');
+
+        const preview = inspectCompleteBackupBundle(bundle, context(local));
+        expect(preview.scalars.weight?.action).toBe('skipped');
+        expect(preview.scalars.pkParams?.action).toBe('skipped');
+        expect(preview.blocked).not.toEqual(expect.arrayContaining(['weight']));
+        expect(preview.blocked).not.toEqual(expect.arrayContaining(['pkParams']));
+    });
+
+    it('lets a stamped PK value from the bundle replace an unstamped local one', () => {
+        const bundle = build(seed());
+        const local = new MemoryStorage();
+        local.setItem('hrt-pk-params', JSON.stringify({ ...DEFAULT_PK_PARAMS, e2_kClear: 0.11 }));
+
+        const preview = inspectCompleteBackupBundle(bundle, context(local));
+        expect(preview.scalars.pkParams?.action).toBe('updated');
+        mergeCompleteBackupBundleToStorage(bundle, context(local));
+        expect(JSON.parse(local.getItem('hrt-pk-params') ?? 'null').e2_kClear).toBe(0.42);
+        expect(local.getItem('hrt-pk-params-at')).toBe('2222');
+    });
+
     it('previews calibration overwrite and applies it only through the explicit merge action', () => {
         const bundle = build(seed());
         const preview = inspectCompleteBackupBundle(bundle, context(new MemoryStorage()));
