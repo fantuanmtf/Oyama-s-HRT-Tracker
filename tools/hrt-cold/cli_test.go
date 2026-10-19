@@ -131,7 +131,7 @@ func requireHexKeyID(t *testing.T, keyID string) {
 func writeEncryptedContainer(t *testing.T, identity *testIdentity, plaintext []byte, path string) {
 	t.Helper()
 	publicArmor := string(readTestFile(t, identity.publicPath))
-	containerBytes, _, err := encryptBundle(publicArmor, plaintext)
+	containerBytes, _, _, _, err := encryptBundle(publicArmor, "", nil, plaintext)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,6 +301,8 @@ func encryptSyntheticBundle(t *testing.T, identity *testIdentity, dir string) (b
 	stdout, stderr, code := runCLI(t,
 		"encrypt",
 		"--recipient", identity.publicPath,
+		"--signer-private", identity.privatePath,
+		"--signer-passphrase-file", identity.passphrasePath,
 		"--in", bundlePath,
 		"--out", containerPath,
 	)
@@ -309,6 +311,33 @@ func encryptSyntheticBundle(t *testing.T, identity *testIdentity, dir string) (b
 	}
 	if got := outputValue(t, stdout, "recipientFingerprint"); got != identity.fingerprint {
 		t.Fatalf("recipient fingerprint = %s, want %s", got, identity.fingerprint)
+	}
+	return bundlePath, containerPath
+}
+
+// encryptBundleText writes a synthetic bundle with the given text and encrypts
+// it with the identity's signing key.
+func encryptBundleText(
+	t *testing.T,
+	identity *testIdentity,
+	dir, name, bundle string,
+) (bundlePath, containerPath string) {
+	t.Helper()
+	bundlePath = filepath.Join(dir, name+".json")
+	containerPath = filepath.Join(dir, name+".hrtb")
+	if err := os.WriteFile(bundlePath, []byte(bundle), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, code := runCLI(t,
+		"encrypt",
+		"--recipient", identity.publicPath,
+		"--signer-private", identity.privatePath,
+		"--signer-passphrase-file", identity.passphrasePath,
+		"--in", bundlePath,
+		"--out", containerPath,
+	)
+	if code != 0 {
+		t.Fatalf("encrypt failed with code %d: %s", code, stderr)
 	}
 	return bundlePath, containerPath
 }
@@ -869,7 +898,7 @@ func TestDecryptValidatesPlaintextBundle(t *testing.T) {
 	}
 	for name, bundle := range invalidBundles {
 		t.Run(name, func(t *testing.T) {
-			containerBytes, _, err := encryptBundle(publicArmor, []byte(bundle))
+			containerBytes, _, _, _, err := encryptBundle(publicArmor, "", nil, []byte(bundle))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -943,6 +972,268 @@ func TestCLIUsage(t *testing.T) {
 	if _, _, code := runCLI(t, "keygen", "--help"); code != 0 {
 		t.Fatalf("keygen --help: code = %d, want 0", code)
 	}
+}
+
+func TestSignedDecryptVerifiesProvenanceAndIsRepeatable(t *testing.T) {
+	dir := t.TempDir()
+	identity := newTestIdentity(t, dir)
+	bundlePath, containerPath := encryptSyntheticBundle(t, identity, dir)
+	replayPath := filepath.Join(dir, "state", "replay.json")
+	firstOut := filepath.Join(dir, "verified-first.json")
+
+	stdout, stderr, code := runCLI(t,
+		"decrypt",
+		"--private", identity.privatePath,
+		"--passphrase-file", identity.passphrasePath,
+		"--verify-key", identity.publicPath,
+		"--replay-state", replayPath,
+		"--in", containerPath,
+		"--out", firstOut,
+	)
+	if code != 0 {
+		t.Fatalf("verified decrypt failed with code %d: %s", code, stderr)
+	}
+	if got := outputValue(t, stdout, "signatureVerified"); got != "true" {
+		t.Fatalf("signatureVerified = %s, want true", got)
+	}
+	if got := outputValue(t, stdout, "signerPrimaryFingerprint"); got != identity.fingerprint {
+		t.Fatalf("signer primary fingerprint = %s, want %s", got, identity.fingerprint)
+	}
+	hash := sha256.Sum256(readTestFile(t, bundlePath))
+	if got := outputValue(t, stdout, "contentSha256"); got != hex.EncodeToString(hash[:]) {
+		t.Fatalf("content hash = %s, want %s", got, hex.EncodeToString(hash[:]))
+	}
+	if got := outputValue(t, stdout, "replayStatus"); got != "new" {
+		t.Fatalf("first replay status = %s, want new", got)
+	}
+	if !bytes.Equal(readTestFile(t, bundlePath), readTestFile(t, firstOut)) {
+		t.Fatal("verified round-trip bytes differ")
+	}
+
+	// Decrypting the same verified backup again is a no-op replay.
+	secondOut := filepath.Join(dir, "verified-second.json")
+	stdout, stderr, code = runCLI(t,
+		"decrypt",
+		"--private", identity.privatePath,
+		"--passphrase-file", identity.passphrasePath,
+		"--verify-key", identity.publicPath,
+		"--replay-state", replayPath,
+		"--in", containerPath,
+		"--out", secondOut,
+	)
+	if code != 0 {
+		t.Fatalf("repeat decrypt failed with code %d: %s", code, stderr)
+	}
+	if got := outputValue(t, stdout, "replayStatus"); got != "repeat" {
+		t.Fatalf("repeat replay status = %s, want repeat", got)
+	}
+}
+
+func TestSeparateSigningKeyIsVerified(t *testing.T) {
+	dir := t.TempDir()
+	recipientDir := filepath.Join(dir, "recipient")
+	signerDir := filepath.Join(dir, "signer")
+	if err := os.MkdirAll(recipientDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(signerDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	recipient := newTestIdentity(t, recipientDir)
+	signer := newTestIdentity(t, signerDir)
+	bundlePath := filepath.Join(dir, "bundle.json")
+	containerPath := filepath.Join(dir, "backup.hrtb")
+	if err := os.WriteFile(bundlePath, readSyntheticBundle(t), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, code := runCLI(t,
+		"encrypt",
+		"--recipient", recipient.publicPath,
+		"--signer-private", signer.privatePath,
+		"--signer-passphrase-file", signer.passphrasePath,
+		"--in", bundlePath,
+		"--out", containerPath,
+	)
+	if code != 0 {
+		t.Fatalf("encrypt with separate signer failed with code %d: %s", code, stderr)
+	}
+
+	outPath := filepath.Join(dir, "decrypted.json")
+	stdout, stderr, code := runCLI(t,
+		"decrypt",
+		"--private", recipient.privatePath,
+		"--passphrase-file", recipient.passphrasePath,
+		"--verify-key", signer.publicPath,
+		"--replay-state", filepath.Join(dir, "replay.json"),
+		"--in", containerPath,
+		"--out", outPath,
+	)
+	if code != 0 {
+		t.Fatalf("separate-signer decrypt failed with code %d: %s", code, stderr)
+	}
+	if got := outputValue(t, stdout, "signatureVerified"); got != "true" {
+		t.Fatalf("signatureVerified = %s, want true", got)
+	}
+	if got := outputValue(t, stdout, "signerPrimaryFingerprint"); got != signer.fingerprint {
+		t.Fatalf("signer primary fingerprint = %s, want %s", got, signer.fingerprint)
+	}
+}
+
+func TestDecryptRejectsWrongOrMissingSignature(t *testing.T) {
+	dir := t.TempDir()
+	identity := newTestIdentity(t, dir)
+	otherDir := filepath.Join(dir, "other")
+	if err := os.MkdirAll(otherDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	other := newTestIdentity(t, otherDir)
+	_, containerPath := encryptSyntheticBundle(t, identity, dir)
+
+	wrongOut := filepath.Join(dir, "wrong-key.json")
+	_, stderr, code := runCLI(t,
+		"decrypt",
+		"--private", identity.privatePath,
+		"--passphrase-file", identity.passphrasePath,
+		"--verify-key", other.publicPath,
+		"--replay-state", filepath.Join(dir, "state-wrong.json"),
+		"--in", containerPath,
+		"--out", wrongOut,
+	)
+	if code == 0 {
+		t.Fatal("decrypt accepted a signature from a different key")
+	}
+	if !strings.Contains(stderr, "not the supplied verification key") {
+		t.Fatalf("unexpected wrong-signer error: %s", stderr)
+	}
+	requireMissing(t, wrongOut)
+
+	unsignedPath := filepath.Join(dir, "unsigned.hrtb")
+	writeEncryptedContainer(t, identity, readSyntheticBundle(t), unsignedPath)
+	unsignedOut := filepath.Join(dir, "unsigned.json")
+	_, stderr, code = runCLI(t,
+		"decrypt",
+		"--private", identity.privatePath,
+		"--passphrase-file", identity.passphrasePath,
+		"--verify-key", identity.publicPath,
+		"--replay-state", filepath.Join(dir, "state-unsigned.json"),
+		"--in", unsignedPath,
+		"--out", unsignedOut,
+	)
+	if code == 0 {
+		t.Fatal("decrypt accepted an unsigned backup with --verify-key")
+	}
+	if !strings.Contains(stderr, "not signed") {
+		t.Fatalf("unexpected unsigned error: %s", stderr)
+	}
+	requireMissing(t, unsignedOut)
+}
+
+func TestVerifiedDecryptRejectsOlderReplayUnlessAllowed(t *testing.T) {
+	dir := t.TempDir()
+	identity := newTestIdentity(t, dir)
+	base := string(readSyntheticBundle(t))
+	newerBundle := strings.Replace(base, "2030-01-01T00:00:00.000Z", "2030-02-01T00:00:00.000Z", 1)
+	differentBundle := strings.Replace(base, `"id": "tf-event-1"`, `"id": "tf-event-2"`, 1)
+	if newerBundle == base || differentBundle == base {
+		t.Fatal("synthetic bundle fixture did not contain the expected createdAt/id")
+	}
+	_, newerContainer := encryptBundleText(t, identity, dir, "newer", newerBundle)
+	_, baseContainer := encryptBundleText(t, identity, dir, "base", base)
+	_, differentContainer := encryptBundleText(t, identity, dir, "different", differentBundle)
+
+	statePath := filepath.Join(dir, "state.json")
+	outNewer := filepath.Join(dir, "decrypted-newer.json")
+	stdout, stderr, code := runCLI(t,
+		"decrypt",
+		"--private", identity.privatePath,
+		"--passphrase-file", identity.passphrasePath,
+		"--verify-key", identity.publicPath,
+		"--replay-state", statePath,
+		"--in", newerContainer,
+		"--out", outNewer,
+	)
+	if code != 0 {
+		t.Fatalf("newer decrypt failed with code %d: %s", code, stderr)
+	}
+	if got := outputValue(t, stdout, "replayStatus"); got != "new" {
+		t.Fatalf("newer replay status = %s, want new", got)
+	}
+
+	outOld := filepath.Join(dir, "old.json")
+	_, stderr, code = runCLI(t,
+		"decrypt",
+		"--private", identity.privatePath,
+		"--passphrase-file", identity.passphrasePath,
+		"--verify-key", identity.publicPath,
+		"--replay-state", statePath,
+		"--in", baseContainer,
+		"--out", outOld,
+	)
+	if code == 0 {
+		t.Fatal("decrypt accepted an older verified backup")
+	}
+	if !strings.Contains(stderr, "older than the newest verified backup") {
+		t.Fatalf("unexpected older-backup error: %s", stderr)
+	}
+	requireMissing(t, outOld)
+
+	stdout, stderr, code = runCLI(t,
+		"decrypt",
+		"--private", identity.privatePath,
+		"--passphrase-file", identity.passphrasePath,
+		"--verify-key", identity.publicPath,
+		"--replay-state", statePath,
+		"--allow-older",
+		"--in", baseContainer,
+		"--out", outOld,
+	)
+	if code != 0 {
+		t.Fatalf("--allow-older decrypt failed with code %d: %s", code, stderr)
+	}
+	if got := outputValue(t, stdout, "replayStatus"); got != "older-allowed" {
+		t.Fatalf("allowed replay status = %s, want older-allowed", got)
+	}
+
+	// The override must not lower the high-water mark.
+	state, err := loadReplayState(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := state.Signers[identity.fingerprint].LastCreatedAt; got != "2030-02-01T00:00:00.000Z" {
+		t.Fatalf("high-water mark = %q, want the newer backup", got)
+	}
+
+	// Same createdAt with different content is a conflict, not a repeat.
+	conflictState := filepath.Join(dir, "conflict-state.json")
+	outBase := filepath.Join(dir, "decrypted-base.json")
+	if _, stderr, code := runCLI(t,
+		"decrypt",
+		"--private", identity.privatePath,
+		"--passphrase-file", identity.passphrasePath,
+		"--verify-key", identity.publicPath,
+		"--replay-state", conflictState,
+		"--in", baseContainer,
+		"--out", outBase,
+	); code != 0 {
+		t.Fatalf("baseline decrypt failed: %s", stderr)
+	}
+	conflictOut := filepath.Join(dir, "conflict.json")
+	_, stderr, code = runCLI(t,
+		"decrypt",
+		"--private", identity.privatePath,
+		"--passphrase-file", identity.passphrasePath,
+		"--verify-key", identity.publicPath,
+		"--replay-state", conflictState,
+		"--in", differentContainer,
+		"--out", conflictOut,
+	)
+	if code == 0 {
+		t.Fatal("decrypt accepted same-time different-content bundle")
+	}
+	if !strings.Contains(stderr, "different content") {
+		t.Fatalf("unexpected conflict error: %s", stderr)
+	}
+	requireMissing(t, conflictOut)
 }
 
 func itoa(value int) string {

@@ -38,6 +38,48 @@ project. The website does **not** encrypt or decrypt this file.
   message integrity check (MDC), or detect ciphertext tampering; its
   `recipientVerified` result remains false.
 
+## Tools signing, provenance, and anti-replay
+
+The `.hrtb` container and the website envelope are unchanged. When
+`encrypt --signer-private --signer-passphrase-file` is supplied, Tools signs
+the **plaintext bundle** with the signer's OpenPGP signing key and then encrypts
+the signed message to the recipient. The signature therefore covers the
+complete-backup envelope, its `createdAt`, every record, and any future fields
+without a second format. The signer identity is inside the encryption and is
+visible only to someone who can decrypt.
+
+`decrypt --verify-key FILE` pins the expected signer public key:
+
+- the message must be signed, the signature must verify, and it must come from
+  the supplied key or one of its subkeys;
+- a signature from another key, a bad signature, an unsigned message, or a
+  detached/ambiguous signer fails closed and writes no output;
+- output includes `signatureVerified`, `signerFingerprint`,
+  `signerPrimaryFingerprint`, and `contentSha256` (SHA-256 of the exact
+  plaintext bundle);
+- without `--verify-key`, Tools prints a warning and does not claim
+  provenance. This keeps legacy unsigned backups readable, but such a decrypt
+  is unauthenticated.
+
+A verified decrypt also consults a local anti-replay high-water mark, keyed by
+the signer's primary fingerprint. The state file defaults to
+`<user-config>/hrt-cold/replay.json` (mode `0600`, group/world-writable files
+are refused) and can be changed with `--replay-state FILE`:
+
+- a newer `createdAt` is accepted and raises the mark;
+- the exact same bundle (same `createdAt` and content hash) is accepted as a
+  repeat without changing the mark;
+- an older `createdAt`, or the same `createdAt` with different content, is
+  refused unless `--allow-older` is passed; an override never lowers the mark;
+- `--no-replay-check` skips the local state for a deliberate restore.
+
+This is local, best-effort rollback detection. It is not a global freshness
+service: a different device, a deleted state file, a compromised signer key, or
+a malicious binary can defeat it. It does not authenticate backups imported
+directly into the website as plaintext JSON; that path has no keys and no
+signature. Website-level provenance would require changing the website's
+no-keys boundary and is not implemented.
+
 ## Envelope
 
 ```json
@@ -187,15 +229,19 @@ The current Tools CLI (`hrt-cold`) supports:
 1. `keygen` — write an armored passphrase-locked private key (mode `0600` on
    Unix) and a public key (mode `0644` on Unix), never overwriting an existing
    output, and print the primary-key fingerprint.
-2. `encrypt` — validate the website bundle envelope, encrypt to the recipient
-   public key without compression, wrap the binary OpenPGP message in the
-   `.hrtb` container, and publish without replacing an existing target.
+2. `encrypt` — validate the website bundle envelope; when signer flags are
+   supplied, sign the plaintext; encrypt to the recipient public key without
+   compression; wrap the binary OpenPGP message in the `.hrtb` container; and
+   publish without replacing an existing target. It prints the recipient
+   fingerprint, signer fingerprint when signed, and the plaintext SHA-256.
 3. `decrypt` — validate the container and outer packet sequence, decrypt,
    verify the MDC and that the supplied private key actually participated,
-   re-validate the bundle envelope, and only then write the plaintext bytes.
+   verify the pinned signer when `--verify-key` is supplied, enforce the local
+   anti-replay mark for verified backups, re-validate the bundle envelope, and
+   only then write the plaintext bytes.
 4. `inspect` — read only the outer container and unauthenticated PKESK
    advertisements. It applies the same packet-sequence check as `decrypt` but
-   does not decrypt, verify the MDC, or prove the recipient.
+   does not decrypt, verify the MDC, verify the signer, or prove the recipient.
 
 Tools writes files atomically with a temp file and hard-link no-replace
 publish, and does not overwrite existing outputs. Windows and Linux behavior

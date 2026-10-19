@@ -71,9 +71,16 @@ func run(args []string, stdout, stderr io.Writer) int {
 func usage(w io.Writer) {
 	fmt.Fprintln(w, `usage:
   hrt-cold keygen  --private-out FILE --public-out FILE --passphrase-file FILE
-  hrt-cold encrypt --recipient FILE --in FILE --out FILE
-  hrt-cold decrypt --private FILE --passphrase-file FILE --in FILE --out FILE
+  hrt-cold encrypt --recipient FILE [--signer-private FILE --signer-passphrase-file FILE]
+                   --in FILE --out FILE
+  hrt-cold decrypt --private FILE --passphrase-file FILE [--verify-key FILE]
+                   [--allow-older] [--no-replay-check] [--replay-state FILE]
+                   --in FILE --out FILE
   hrt-cold inspect --in FILE [--recipient FILE]
+
+Signing is recommended: encrypt signs the plaintext with the signer key, and
+decrypt verifies it when --verify-key is supplied. Verified decrypts also
+check a local high-water mark to refuse an older backup (anti-replay).
 
 All commands are offline. The .hrtb container format is experimental and is
 not a stable production format.`)
@@ -141,6 +148,8 @@ func cmdKeygen(args []string, stdout, stderr io.Writer) error {
 func cmdEncrypt(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("encrypt", stderr)
 	recipientPath := fs.String("recipient", "", "armored public key of the recipient")
+	signerPath := fs.String("signer-private", "", "armored private signing key (recommended)")
+	signerPassFile := fs.String("signer-passphrase-file", "", "0600 (or stricter) file containing the signing-key passphrase")
 	inPath := fs.String("in", "", "website complete-backup JSON bundle")
 	outPath := fs.String("out", "", ".hrtb output")
 	if err := parseFlags(fs, args); err != nil {
@@ -148,6 +157,9 @@ func cmdEncrypt(args []string, stdout, stderr io.Writer) error {
 	}
 	if *recipientPath == "" || *inPath == "" || *outPath == "" {
 		return errors.New("encrypt requires --recipient, --in, and --out")
+	}
+	if (*signerPath == "") != (*signerPassFile == "") {
+		return errors.New("--signer-private and --signer-passphrase-file must be supplied together")
 	}
 	if err := ensureOutputMissing(*outPath); err != nil {
 		return err
@@ -164,7 +176,29 @@ func cmdEncrypt(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	container, fingerprint, err := encryptBundle(string(recipientArmor), bundle)
+
+	var signerArmor string
+	var signerPassphrase []byte
+	if *signerPath != "" {
+		signer, err := readLimited(*signerPath, maxKeyBytes)
+		if err != nil {
+			return err
+		}
+		signerArmor = string(signer)
+		signerPassphrase, err = readPassphrase(*signerPassFile)
+		if err != nil {
+			return err
+		}
+		if note := passphraseFilePlatformNote(); note != "" {
+			fmt.Fprintln(stderr, note)
+		}
+	} else {
+		fmt.Fprintln(stderr, "warning: creating an unsigned backup; pass --signer-private and --signer-passphrase-file for provenance")
+	}
+
+	container, fingerprint, signerFingerprint, contentSHA256, err := encryptBundle(
+		string(recipientArmor), signerArmor, signerPassphrase, bundle,
+	)
 	if err != nil {
 		return err
 	}
@@ -172,6 +206,13 @@ func cmdEncrypt(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 	fmt.Fprintf(stdout, "recipientFingerprint: %s\n", fingerprint)
+	if signerFingerprint != "" {
+		fmt.Fprintf(stdout, "signerFingerprint: %s\n", signerFingerprint)
+		fmt.Fprintln(stdout, "signature: signed")
+	} else {
+		fmt.Fprintln(stdout, "signature: unsigned")
+	}
+	fmt.Fprintf(stdout, "contentSha256: %s\n", contentSHA256)
 	fmt.Fprintf(stdout, "bundleCreatedAt: %s\n", info.CreatedAt)
 	fmt.Fprintf(stdout, "bundleMode: %s\n", info.Mode)
 	return nil
@@ -181,8 +222,12 @@ func cmdDecrypt(args []string, stdout, stderr io.Writer) error {
 	fs := newFlagSet("decrypt", stderr)
 	privatePath := fs.String("private", "", "armored private key")
 	passFile := fs.String("passphrase-file", "", "0600 (or stricter) file containing the private-key passphrase")
+	verifyPath := fs.String("verify-key", "", "armored public key that must have signed the backup")
 	inPath := fs.String("in", "", ".hrtb input")
 	outPath := fs.String("out", "", "validated complete-backup JSON output")
+	allowOlder := fs.Bool("allow-older", false, "accept an older or same-time-different verified backup (replay override)")
+	noReplay := fs.Bool("no-replay-check", false, "do not read or update the local anti-replay state")
+	replayStatePath := fs.String("replay-state", "", "override the local replay state file")
 	if err := parseFlags(fs, args); err != nil {
 		return err
 	}
@@ -211,17 +256,75 @@ func cmdDecrypt(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	plaintext, fingerprint, err := decryptContainer(string(privateArmor), passphrase, container.Payload)
+	var verifyArmor string
+	if *verifyPath != "" {
+		verify, err := readLimited(*verifyPath, maxKeyBytes)
+		if err != nil {
+			return err
+		}
+		verifyArmor = string(verify)
+	} else {
+		fmt.Fprintln(stderr, "warning: no --verify-key supplied; the backup's origin and signature are not verified")
+	}
+
+	result, err := decryptContainer(string(privateArmor), passphrase, container.Payload, verifyArmor)
 	if err != nil {
 		return err
 	}
-	if _, err := validateBundle(plaintext); err != nil {
+	info, err := validateBundle(result.Plaintext)
+	if err != nil {
 		return fmt.Errorf("decrypted payload is not a valid complete-backup bundle: %w", err)
 	}
-	if err := atomicWrite(*outPath, plaintext, 0o600); err != nil {
+
+	replayStatus := "disabled"
+	var replayPath string
+	var state *replayState
+	replaySigner := result.SignerPrimaryFingerprint
+	if replaySigner == "" {
+		replaySigner = result.SignerFingerprint
+	}
+	if result.SignatureVerified && !*noReplay {
+		if *replayStatePath != "" {
+			replayPath = *replayStatePath
+		} else {
+			replayPath, err = defaultReplayStatePath()
+			if err != nil {
+				return err
+			}
+		}
+		state, err = loadReplayState(replayPath)
+		if err != nil {
+			return err
+		}
+		replayStatus, _, err = checkReplay(state, replaySigner, info.CreatedAt, result.ContentSHA256, *allowOlder)
+		if err != nil {
+			return err
+		}
+	} else if result.SignatureVerified && *noReplay {
+		replayStatus = "check-disabled"
+	} else {
+		replayStatus = "unsigned"
+	}
+
+	if err := atomicWrite(*outPath, result.Plaintext, 0o600); err != nil {
 		return err
 	}
-	fmt.Fprintf(stdout, "privateKeyFingerprint: %s\n", fingerprint)
+	if result.SignatureVerified && !*noReplay && (replayStatus == "new" || replayStatus == "newer") {
+		state.record(replaySigner, info.CreatedAt, result.ContentSHA256)
+		if err := writeReplayState(replayPath, state); err != nil {
+			return fmt.Errorf("backup was written to %s, but replay state was not updated: %w", *outPath, err)
+		}
+	}
+
+	fmt.Fprintf(stdout, "privateKeyFingerprint: %s\n", result.PrivateKeyFingerprint)
+	fmt.Fprintf(stdout, "signatureVerified: %t\n", result.SignatureVerified)
+	if result.SignatureVerified {
+		fmt.Fprintf(stdout, "signerFingerprint: %s\n", result.SignerFingerprint)
+		fmt.Fprintf(stdout, "signerPrimaryFingerprint: %s\n", result.SignerPrimaryFingerprint)
+	}
+	fmt.Fprintf(stdout, "contentSha256: %s\n", result.ContentSHA256)
+	fmt.Fprintf(stdout, "bundleCreatedAt: %s\n", info.CreatedAt)
+	fmt.Fprintf(stdout, "replayStatus: %s\n", replayStatus)
 	return nil
 }
 

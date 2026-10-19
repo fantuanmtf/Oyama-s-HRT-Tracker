@@ -9,7 +9,8 @@ into the website. This tool does not add OpenPGP to the website and is not a
 runtime dependency of the web app.
 
 The website remains responsible for producing and importing the unencrypted
-bundle. This tool only validates the bundle envelope, encrypts it, decrypts it,
+bundle. This tool validates the bundle envelope, signs and encrypts it,
+decrypts and verifies it, applies a local anti-replay mark to verified backups,
 and writes files atomically.
 
 ## Build and test
@@ -47,6 +48,9 @@ hrt-cold keygen \
   `fingerprint: <hex>`.
 - The generated user ID is the fixed synthetic identity
   `Oyama HRT Cold Backup <hrt-cold@example.invalid>`.
+- The generated key can sign and encrypt. Using one key for both is simplest;
+  generating a second key pair and using it only as `--signer-private` /
+  `--verify-key` keeps signing and decryption authority separate.
 - Unix requires the passphrase file to be mode `0600` or stricter. Windows
   checks that it is a regular file and relies on the NTFS ACL; Unix mode bits
   are not a Windows ACL and are not verified there.
@@ -59,6 +63,8 @@ either makes encrypted backups unrecoverable.
 ```sh
 hrt-cold encrypt \
   --recipient backup-public.asc \
+  --signer-private signing-private.asc \
+  --signer-passphrase-file signing-passphrase.txt \
   --in complete-backup.json \
   --out complete-backup.hrtb
 ```
@@ -71,10 +77,16 @@ hrt-cold encrypt \
 - Does **not** validate clinical record semantics. The website importer remains
   the authority for record validation, merge behavior, and conflicts.
 - Unknown fields are accepted for forward compatibility.
+- When the signer flags are supplied, signs the plaintext bundle before
+  encrypting it. The signature covers the whole envelope, including
+  `createdAt`, so provenance and content are bound together.
 - Encrypts to the recipient public key without compression, wraps the binary
   OpenPGP message in the `.hrtb` container, and publishes the output without
   overwriting an existing file.
-- Prints the recipient primary-key fingerprint.
+- Prints the recipient fingerprint, the signer fingerprint when signed, the
+  plaintext SHA-256, and `signature: signed|unsigned`. Omitting the signer flags
+  still works for legacy use but prints a warning: the backup then has no
+  provenance.
 
 ### decrypt
 
@@ -82,6 +94,7 @@ hrt-cold encrypt \
 hrt-cold decrypt \
   --private backup-private.asc \
   --passphrase-file passphrase.txt \
+  --verify-key signing-public.asc \
   --in complete-backup.hrtb \
   --out restored-complete-backup.json
 ```
@@ -99,6 +112,17 @@ hrt-cold decrypt \
   passphrase, tampered ciphertext, truncation, unknown version, reserved flags,
   or trailing bytes. The private key must actually decrypt the session key; a
   message that did not use the supplied key is not accepted.
+- With `--verify-key`, requires a valid signature from that public key (or one
+  of its subkeys). An unsigned message, a bad signature, or a signature from a
+  different key fails closed and writes no output. Without `--verify-key`,
+  decryption still works for legacy backups but prints a warning and reports
+  `signatureVerified: false`.
+- A verified decrypt also checks a local anti-replay high-water mark keyed by
+  the signer's primary fingerprint. The state defaults to
+  `<user-config>/hrt-cold/replay.json` (mode `0600`); `--replay-state FILE`
+  overrides it, `--no-replay-check` disables it, and `--allow-older` overrides
+  an older or same-time-different result without lowering the mark. The exact
+  same bundle decrypts again as `repeat`.
 - Re-validates the complete-backup envelope after decryption.
 - Writes the exact decrypted bytes, mode `0600` on Unix, only after all checks
   pass. An existing output is never replaced.
@@ -195,16 +219,19 @@ swap, crash dumps, and copies may retain data.
 
 ## Security limits
 
-- Encryption is public-key OpenPGP to the supplied recipient. There is no
-  signature, sender authentication, or proof that the bundle came from a
-  particular device.
+- Encryption is public-key OpenPGP to the supplied recipient. Signing is
+  implemented but optional: without `--signer-private` the backup has no
+  provenance, and without `--verify-key` decryption does not verify it.
 - Recipient key IDs and fingerprints shown by `inspect` are unauthenticated
   PKESK advertisements, not proof of encryption to that key. Only a successful
   `decrypt` shows that a private key participated.
 - Fingerprint display does not establish trust. Compare the full fingerprint
-  through an independent channel before encrypting.
-- There is no anti-rollback, remote attestation, or protection from a
-  compromised endpoint, malicious binary, keylogger, or filesystem.
+  through an independent channel before encrypting or pinning it.
+- Anti-replay is a local high-water mark. It does not protect a fresh device, a
+  deleted state file, a compromised signer key, or a stolen private key, and it
+  cannot authenticate plaintext bundles imported directly into the website.
+- There is no remote attestation or protection from a compromised endpoint,
+  malicious binary, keylogger, or filesystem.
 - Plaintext exists in memory before encryption and after decryption.
 - The tool does not manage key rotation, revocation, recovery kits, or
   recovery drills.
