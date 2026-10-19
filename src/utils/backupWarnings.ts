@@ -135,6 +135,7 @@ export function describeCompleteBackupPreview(
             .replace('{what}', describeRecordChanges(preview.stats, t)),
     ];
     if (preview.stats.removed > 0) sentences.push(countText('import.bundle_will_remove', preview.stats.removed, t));
+    if (Object.keys(preview.preferences.values).length > 0) sentences.push(t('import.bundle_preferences'));
     if (preview.blocked.length) sentences.push(describeBlockedParts(preview.blocked, t));
     sentences.push(...describeCompleteBackupAccountWarning(user, t).lines);
     return joinSentences(sentences);

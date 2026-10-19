@@ -6,11 +6,11 @@ are the complete-backup review fixes on `agent/add-gpg-website`.
 
 **Compared revisions**
 
-| Side    | Revision                                 | Evidence                                                |
-| ------- | ---------------------------------------- | ------------------------------------------------------- |
-| Website | `agent/add-gpg-website` @ `2880bb5`      | `src/utils/backupBundle.ts`, `src/utils/backupState.ts` |
-| Tools   | `Recovery/Tools` @ `7ee628b` (read-only) | `tools/hrt-cold/bundle.go`, `tools/hrt-cold/README.md`  |
-| Format  | —                                        | `docs/backup-schema-audit/TOOLS_INTERFACE.md`           |
+| Side    | Revision                                 | Evidence                                                     |
+| ------- | ---------------------------------------- | ------------------------------------------------------------ |
+| Website | `agent/add-gpg-website` (PR head)        | `src/utils/backupBundle.ts`, `src/utils/backupState.ts`      |
+| Tools   | `Recovery/Tools` @ `7ee628b` (read-only) | `tools/hrt-cold/bundle.go`, `tools/hrt-cold/README.md`       |
+| Format  | —                                        | `Recovery/Tools:docs/backup-schema-audit/TOOLS_INTERFACE.md` |
 
 The Tools `hrt-cold` validator checks the hand-off envelope and container
 shapes; it does **not** validate clinical record semantics or apply restore
@@ -95,5 +95,8 @@ should carry an account identifier is **UNRESOLVED** and out of scope here.
 - BTV-1, BTV-2, BTV-4, BTV-5, BTV-6, BTV-8 to BTV-17 have a designated
   authoritative side above.
 - BTV-3 and BTV-7 remain **UNRESOLVED** product/interface decisions.
-- No claim is made about production readiness, L3 end-to-end restore, OpenPGP
-  key handling, License Gate approval, or Docker.
+- Export, preview, merge, account targeting, rollback, failure paths, and
+  reload/re-export equality now have browser L3 coverage in `e2e/`. That is
+  automated local evidence, not production restore.
+- No claim is made about production readiness, OpenPGP key handling, License
+  Gate approval, or Docker.

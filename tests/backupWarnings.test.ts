@@ -162,6 +162,21 @@ describe('complete-backup preview copy', () => {
         expect(text).not.toMatch(/kg|校准/);
     });
 
+    it('says when the merge will also apply display settings', () => {
+        const withPreferences = describeCompleteBackupPreview(
+            preview({ preferences: { values: { 'app-theme': 'dark' }, ignored: [], invalid: [] } }),
+            { t: translate('en'), lang: 'en', user: null },
+        );
+        expect(withPreferences).toContain("It also applies the backup's display settings.");
+
+        const without = describeCompleteBackupPreview(preview(), {
+            t: translate('en'),
+            lang: 'en',
+            user: null,
+        });
+        expect(without).not.toContain('display settings');
+    });
+
     it('reads right for one record and for nothing new', () => {
         const en = (stats: Partial<CompleteBackupPreview['stats']>) =>
             describeCompleteBackupPreview(
