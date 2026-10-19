@@ -1,0 +1,12 @@
+# The prefix is fixed by ./configure --prefix (or CMAKE_INSTALL_PREFIX) at
+# configure time. The CMake package config is relocatable; pkg-config is not.
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+
+Name: hrtcold
+Description: Experimental native core for the Oyama HRT Tracker cold-backup Tools
+Version: @PROJECT_VERSION@
+Cflags: -I${includedir}
+Libs:

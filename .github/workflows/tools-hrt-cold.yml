@@ -6,10 +6,24 @@ on:
       - "Recovery/Tools"
     paths:
       - "tools/hrt-cold/**"
+      - "configure"
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "include/**"
+      - "src/native/**"
+      - "tests/native/**"
+      - "docs/native/**"
       - ".github/workflows/tools-hrt-cold.yml"
   pull_request:
     paths:
       - "tools/hrt-cold/**"
+      - "configure"
+      - "CMakeLists.txt"
+      - "cmake/**"
+      - "include/**"
+      - "src/native/**"
+      - "tests/native/**"
+      - "docs/native/**"
       - ".github/workflows/tools-hrt-cold.yml"
   workflow_dispatch:
 
@@ -57,3 +71,36 @@ jobs:
 
       - name: go build
         run: go build ./...
+
+  native:
+    name: Native scaffold (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            bash configure --build-dir=build-native --enable-sanitizers --enable-werror
+          else
+            bash configure --build-dir=build-native --enable-werror
+          fi
+
+      - name: Build
+        run: cmake --build build-native --config Release
+
+      - name: Test
+        shell: bash
+        run: |
+          cd build-native
+          ctest -C Release --output-on-failure

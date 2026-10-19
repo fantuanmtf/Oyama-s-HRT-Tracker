@@ -29,6 +29,25 @@ release, or a pull request.
 | `f73f0c9` | `fix(tools): reject packets after encrypted OpenPGP payload` |
 | `6e27748` | `docs(tools): sync audit, recovery demo, and platform CI` |
 | `d2ef418` | `feat(tools): sign, verify, and reject replayed cold backups` |
+| `497fe11` | `chore(tools): make Recovery/Tools a tools-only branch` |
+
+## Native C/C++ core (Milestone 0)
+
+The native line is docs-first, code-later:
+
+- `configure` — hand-written CMake wrapper with prefix/build-dir/build-type,
+  sanitizer, warnings-as-errors, and crypto-backend options.
+- `CMakeLists.txt`, `cmake/` — interface-only `hrtcold::native` target, install
+  metadata, pkg-config, and C11/C++17 header checks.
+- `include/hrtcold/hrtcold.h` — v1 ABI vocabulary: version, status, limits,
+  fixed-size error detail; no implemented symbols.
+- `tests/native/` — header compile/link/run checks.
+- `docs/native/` — design, ABI, build, crypto-backend analysis, and test plan.
+
+No native parser, OpenPGP backend, replay store, or file writer is implemented
+yet. The Go CLI remains the authority. RNP is the leading crypto-backend
+candidate; it is not linked in Milestone 0. The next milestone is the container
+parser and bundle validator with differential tests against the Go CLI.
 
 ## Files
 
@@ -47,8 +66,14 @@ release, or a pull request.
 - `tools/hrt-cold/testdata/synthetic-bundle.json` — fictional bundle only.
 - `tools/hrt-cold/README.md` — usage, format, safety, limits.
 - `tools/hrt-cold/THIRD_PARTY_NOTICES.md` — runtime license notices.
-- `.github/workflows/tools-hrt-cold.yml` — Ubuntu and Windows native tests.
+- `.github/workflows/tools-hrt-cold.yml` — Ubuntu and Windows Go/native-scaffold
+  tests.
 - `docs/backup-schema-audit/TOOLS_INTERFACE.md` — website/Tools boundary.
+- `configure`, `CMakeLists.txt`, `cmake/` — native Milestone 0 build contract.
+- `include/hrtcold/hrtcold.h` — native v1 ABI vocabulary.
+- `tests/native/` — C and C++ header checks.
+- `docs/native/` — native design, ABI, build, crypto-backend analysis, and test
+  plan.
 
 ## Implemented commands
 

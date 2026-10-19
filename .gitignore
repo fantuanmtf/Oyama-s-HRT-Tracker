@@ -4,6 +4,10 @@
 /tools/hrt-cold/*.test
 /tools/hrt-cold/*.test.exe
 
+# Native CMake build trees
+/build/
+/build-*/
+
 # Local editor and OS files
 .DS_Store
 *.swp

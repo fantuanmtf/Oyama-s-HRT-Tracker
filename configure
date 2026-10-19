@@ -1,0 +1,127 @@
+#!/bin/sh
+# Hand-written configure wrapper around CMake for the hrt-cold native core.
+#
+# Milestone 0: this configures the C/C++ ABI header, install metadata, and
+# header compatibility checks. The native core implementation is not present
+# yet; see docs/native/DESIGN.md for the roadmap.
+set -eu
+
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+BUILD_DIR="$ROOT/build"
+PREFIX="/usr/local"
+BUILD_TYPE="Release"
+SANITIZERS="OFF"
+WERROR="OFF"
+CRYPTO_BACKEND="rnp"
+
+usage() {
+    cat <<'EOF'
+Usage: ./configure [options]
+
+Options:
+  --prefix=PATH             install prefix (default: /usr/local)
+  --build-dir=DIR           build directory, absolute or relative to this tree
+                            (default: <tree>/build)
+  --build-type=TYPE         CMake build type: Release, RelWithDebInfo, Debug,
+                            MinSizeRel (default: Release)
+  --enable-sanitizers       add AddressSanitizer + UndefinedBehaviorSanitizer
+                            (GCC/Clang only)
+  --disable-sanitizers      explicitly disable sanitizers (default)
+  --enable-werror           treat compiler warnings as errors
+  --with-crypto=BACKEND     future native OpenPGP backend: rnp, openssl,
+                            botan, libgcrypt, none (default: rnp)
+  -h, --help                show this help
+
+Environment:
+  CC, CXX, CMAKE            override the compiler or CMake executable
+
+Milestone 0 does not link a native library yet. Configure and build validate
+the public C header, the CMake package metadata, and C/C++ compatibility.
+EOF
+}
+
+for arg in "$@"; do
+    case "$arg" in
+        --prefix=*) PREFIX=${arg#*=} ;;
+        --build-dir=*) BUILD_DIR=${arg#*=} ;;
+        --build-type=*) BUILD_TYPE=${arg#*=} ;;
+        --enable-sanitizers) SANITIZERS="ON" ;;
+        --disable-sanitizers) SANITIZERS="OFF" ;;
+        --enable-werror) WERROR="ON" ;;
+        --with-crypto=*) CRYPTO_BACKEND=${arg#*=} ;;
+        -h|--help) usage; exit 0 ;;
+        *)
+            echo "configure: unknown option: $arg" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+done
+
+case "$CRYPTO_BACKEND" in
+    rnp|openssl|botan|libgcrypt|none) ;;
+    *)
+        echo "configure: unknown --with-crypto value: $CRYPTO_BACKEND" >&2
+        echo "configure: expected rnp, openssl, botan, libgcrypt, or none" >&2
+        exit 2
+        ;;
+esac
+
+case "$BUILD_TYPE" in
+    Release|RelWithDebInfo|Debug|MinSizeRel) ;;
+    *)
+        echo "configure: unsupported --build-type: $BUILD_TYPE" >&2
+        exit 2
+        ;;
+esac
+
+case "$BUILD_DIR" in
+    /*) ;;
+    *) BUILD_DIR="$ROOT/$BUILD_DIR" ;;
+esac
+
+CMAKE=${CMAKE:-cmake}
+if ! command -v "$CMAKE" >/dev/null 2>&1; then
+    echo "configure: cmake not found; install CMake >= 3.16 or set CMAKE=..." >&2
+    exit 1
+fi
+
+if [ "$SANITIZERS" = "ON" ]; then
+    case "$(uname -s 2>/dev/null || echo unknown)" in
+        MINGW*|MSYS*|CYGWIN*)
+            echo "configure: sanitizers are not supported by the MSVC/Windows toolchain" >&2
+            exit 2
+            ;;
+    esac
+fi
+
+mkdir -p "$BUILD_DIR"
+
+echo "configure: source        $ROOT"
+echo "configure: build dir     $BUILD_DIR"
+echo "configure: build type    $BUILD_TYPE"
+echo "configure: install prefix $PREFIX"
+echo "configure: crypto backend $CRYPTO_BACKEND (planned; not linked in Milestone 0)"
+echo "configure: sanitizers    $SANITIZERS"
+echo "configure: warnings-as-errors $WERROR"
+
+"$CMAKE" -S "$ROOT" -B "$BUILD_DIR" \
+    -DCMAKE_BUILD_TYPE="$BUILD_TYPE" \
+    -DCMAKE_INSTALL_PREFIX="$PREFIX" \
+    -DHRTCOLD_ENABLE_SANITIZERS="$SANITIZERS" \
+    -DHRTCOLD_ENABLE_WERROR="$WERROR" \
+    -DHRTCOLD_CRYPTO_BACKEND="$CRYPTO_BACKEND"
+
+cat <<EOF
+
+configure: done.
+
+Next:
+  cmake --build "$BUILD_DIR" --config "$BUILD_TYPE"
+  (cd "$BUILD_DIR" && ctest -C "$BUILD_TYPE" --output-on-failure)
+  cmake --install "$BUILD_DIR"
+
+Milestone 0 builds only the public header checks. The native core
+implementation, and therefore any compiled library, is still to come.
+See docs/native/DESIGN.md and docs/native/BUILD.md.
+EOF

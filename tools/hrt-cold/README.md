@@ -13,6 +13,12 @@ bundle. This tool validates the bundle envelope, signs and encrypts it,
 decrypts and verifies it, applies a local anti-replay mark to verified backups,
 and writes files atomically.
 
+The Go CLI is the working implementation. A C/C++ native core is being
+specified before it is written: Milestone 0 adds `configure`, CMake, a C ABI
+header, and design/ABI/crypto/test docs. See
+[`docs/native/README.md`](../../docs/native/README.md). No native core code or
+crypto backend is linked yet.
+
 ## Build and test
 
 ```sh
