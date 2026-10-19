@@ -264,7 +264,10 @@ encrypted packet followed by trailing literal/compressed/signed packets,
 multi-recipient and hidden-recipient messages, legal marker packets, existing
 output, oversized input, malformed bundle, missing output parent, atomic
 no-replace publication, concurrent writers, temp cleanup, advertised-recipient
-matching, and passphrase-file mode checks on Unix.
+matching, and passphrase-file mode checks on Unix. Signing coverage includes a
+separate signer key, wrong and missing pinned keys, unsigned backups with
+`--verify-key`, replay new/repeat/older/conflict states, and replay-state file
+permissions and corruption.
 
 ## License
 
