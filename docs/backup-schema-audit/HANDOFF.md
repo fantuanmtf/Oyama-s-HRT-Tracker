@@ -451,3 +451,12 @@ deletion counts/ids.
   out of scope. Cross-account detection is impossible with the current format.
 - **Push:** pending at the time of this handoff; the final checkpoint records
   the remote SHA for `origin/agent/add-gpg-website`.
+
+### Final push checkpoint
+
+- Code + docs commit `6aa8f3c098e0ba3808d049f46ed63fb4e0d4ba8f` was pushed
+  non-force to `origin/agent/add-gpg-website` (`82381f9..6aa8f3c` fast-forward).
+- `git ls-remote origin refs/heads/agent/add-gpg-website` returned the same SHA,
+  and the worktree was clean before this docs-only note.
+- This note is a follow-up commit on the same branch; no other ref, main,
+  upstream, Tools checkout, PR, merge, or release was changed.
