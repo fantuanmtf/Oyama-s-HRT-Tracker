@@ -17,6 +17,10 @@ older entries may name superseded SHAs.
 - **Open:** BTV-3/7, signing/source authentication/anti-replay, Replace
   all-or-nothing, L3 browser E2E, Tools v6/MDC/recipient verification, and
   Windows durability; see issues #127 and #128.
+- **Backend/Tools verification:** [`BACKEND_AND_TOOLS_TEST_REPORT.md`](BACKEND_AND_TOOLS_TEST_REPORT.md)
+  records the local Tools checks/CLI recovery loop and the local Worker smoke
+  test at `7ee628b` / `5bfbb6b`; no production, L3, or security-audit claim is
+  made.
 - **Checks for this docs-only update:** `git diff --check`; no build or test
   suite was run. No production, L3, or "no vulnerabilities" claim is made.
 
