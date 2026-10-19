@@ -1,40 +1,9 @@
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
+# Go build output (also covered by tools/hrt-cold/.gitignore)
+/tools/hrt-cold/hrt-cold
+/tools/hrt-cold/hrt-cold.exe
+/tools/hrt-cold/*.test
+/tools/hrt-cold/*.test.exe
 
-node_modules
-dist
-dist-ssr
-src-tauri/target
-src-tauri/target/release
-*.local
-
-# Editor directories and files
-.vscode/*
-!.vscode/extensions.json
-.idea
+# Local editor and OS files
 .DS_Store
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-# Wrangler
-.wrangler
-.dev.vars
-
-# Docker runtime configuration
-.env
-.env.*
-!.env.docker.example
-data/
-
-# Test Data
-test_data_*.json
-/media
+*.swp

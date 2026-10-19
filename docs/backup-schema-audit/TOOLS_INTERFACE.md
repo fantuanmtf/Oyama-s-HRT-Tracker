@@ -3,9 +3,9 @@
 **Status:** website export, merge, and Replace data layers implemented. Replace
 is a separate danger action backed by a crash-recoverable localStorage journal;
 it changes no envelope or `.hrtb` bytes.
-**Tools reference:** `Recovery/Tools` @ `d2ef418` (read-only),
-`tools/hrt-cold/`. The Tools CLI is an experimental checkpoint; the `.hrtb`
-container is not stable and is not wired into the website.
+**Tools reference:** this `Recovery/Tools` branch, `tools/hrt-cold/`. The Tools
+CLI is an experimental checkpoint; the `.hrtb` container is not stable and is
+not wired into the website.
 **Scope:** hand-off format between the website and the separate offline Tools
 project. The website does **not** encrypt or decrypt this file.
 
@@ -222,7 +222,8 @@ conflict, tombstone, and preference behavior.
   opaque to Tools.
 - Envelope struct fields are matched case-insensitively by Go's JSON decoder;
   a lowercase key and a case variant can both resolve to the same field, with
-  the later member winning. Category keys remain exact lowercase. See BTV-16.
+  the later member winning. Category keys remain exact lowercase. This case
+  behavior is an unresolved interface detail; do not rely on it.
 
 The `.hrtb` container (experimental) is big-endian:
 

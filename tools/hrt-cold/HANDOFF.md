@@ -11,9 +11,12 @@ release, or a pull request.
 
 - **Branch:** `Recovery/Tools`
 - **Base:** `agent/backup-schema-audit` @ `9874c40afb89b0e3c9201280ebfe8b1415548eb4`
-- **History:** branched from the audit work; no website UI commits were included.
+- **History:** originally branched from the audit line. The branch is now
+  tools-only: website source, assets, author/credits content, audit/demo docs,
+  and non-tools CI/tests were removed. Their history remains in Git.
 - **Interface contract:** `docs/backup-schema-audit/TOOLS_INTERFACE.md`, synced
-  from the `agent/add-gpg-website` review in `6e27748`.
+  from the `agent/add-gpg-website` review in `6e27748` and kept as the one
+  cross-project reference on this branch.
 
 ## Commits
 
