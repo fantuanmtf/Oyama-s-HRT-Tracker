@@ -73,22 +73,22 @@ describe('complete-backup confirmation copy', () => {
 
         expect(warning.target).toEqual({ kind: 'account', username: 'synthetic-user' });
         expect(warning.lines).toEqual([
-            'Merges into: account synthetic-user. Backups do not record which account they came from, so check that this one is yours.',
+            'It merges into the account synthetic-user, so make sure this backup is yours.',
         ]);
     });
 
-    it('falls back to the local device when signed out or the username is blank', () => {
+    it('only asks for the check when signed out or the username is blank', () => {
         for (const user of [null, undefined, {}, { username: '   ' }, { username: null }]) {
             expect(resolveCompleteBackupTarget(user)).toEqual({ kind: 'local' });
             const warning = describeCompleteBackupAccountWarning(user, translate('en'));
-            expect(warning.lines[0]).toContain('Merges into: this device (not signed in).');
+            expect(warning.lines).toEqual(['Make sure this backup is yours.']);
         }
     });
 
     it('says the same in Chinese without claiming the bundle carries a source account', () => {
         const warning = describeCompleteBackupAccountWarning({ username: '合成账户' }, translate('zh'));
 
-        expect(warning.lines).toEqual(['会合并到：账户 合成账户。备份不记得自己来自哪个账户，请确认它是你的。']);
+        expect(warning.lines).toEqual(['它会合并到账户 合成账户，请确认这份备份是你的。']);
     });
 
     it('asks before downloading an unencrypted file and names no tool that is not shipped', () => {
@@ -109,7 +109,7 @@ describe('complete-backup confirmation copy', () => {
 });
 
 describe('complete-backup preview copy', () => {
-    it('lists what the backup holds by mode, skipping empty categories', () => {
+    it('says in a few sentences when the backup is from and what it adds', () => {
         const text = describeCompleteBackupPreview(
             preview({
                 counts: {
@@ -121,15 +121,15 @@ describe('complete-backup preview copy', () => {
             { t: translate('en'), lang: 'en', user: null },
         );
 
-        const [intro, contents, changes] = text.split('\n\n');
-        expect(intro).toContain('Complete backup from ');
-        expect(intro).toContain('2030');
-        expect(intro).toContain('Merges into: this device (not signed in).');
-        expect(contents).toBe('Feminizing HRT: doses 12, lab results 3\nMasculinizing HRT: supplies 1');
-        expect(changes).toBe('15 added, 0 updated, 0 removed.');
+        expect(text.startsWith('This backup is from ')).toBe(true);
+        expect(text).toContain('2030');
+        expect(text.endsWith(' and adds 15 records. Make sure this backup is yours.')).toBe(true);
+        // Per-category counts stay out of the dialog.
+        expect(text).not.toMatch(/lab results|supplies|Feminizing/);
+        expect(text).not.toContain('\n');
     });
 
-    it('reads as plain sentences: no mode keys, method ids, ISO dates or record ids', () => {
+    it('reads as plain sentences: no mode keys, method ids, ISO dates or weights', () => {
         const text = describeCompleteBackupPreview(
             preview({
                 counts: { transfem: counts({ events: 1 }), transmasc: counts() },
@@ -150,28 +150,36 @@ describe('complete-backup preview copy', () => {
             { t: translate('zh'), lang: 'zh', user: { username: 'synthetic-user' } },
         );
 
-        expect(text).toContain('会合并到：账户 synthetic-user。');
-        expect(text).toContain('女性化 HRT：用药记录 1');
-        expect(text).toContain('新增 0 条，更新 1 条，删除 2 条。');
-        expect(text).toContain('删除的是在备份里已经删掉的记录。');
-        expect(text).toContain('药物参数换成备份里的。');
-        expect(text).toContain('校准设置换成备份里的，下一步会再问你一次。');
-        expect(text).toContain('这些没有合并：男性化 HRT 用药记录、男性化 HRT 删除记录、体重。');
-        // A weight in conflict is not merged, so the preview does not promise it.
-        expect(text).not.toContain('体重改成');
+        expect(text).toContain('的备份，会更新 1 条记录。');
+        expect(text).toContain('有 2 条记录在备份里已经删掉，这里也会删掉。');
+        expect(text).toContain('这些合并不了，保持原样：男性化 HRT 用药记录、男性化 HRT 删掉的记录、体重。');
+        expect(text.endsWith('它会合并到账户 synthetic-user，请确认这份备份是你的。')).toBe(true);
+        // Chinese sentences run on without a space after the full stop.
+        expect(text).not.toContain('。 ');
         for (const jargon of ['transfem', 'transmasc', 'mipd', 'ekf', 'updatedAt', 'unknown route', '2030-01-01T']) {
             expect(text).not.toContain(jargon);
         }
+        expect(text).not.toMatch(/kg|校准/);
     });
 
-    it('says the weight it will set and that an empty backup holds no records', () => {
-        const text = describeCompleteBackupPreview(
-            preview({ scalars: { weight: { action: 'updated', current: 70, incoming: 62 } } }),
-            { t: translate('en'), lang: 'en', user: null },
-        );
+    it('reads right for one record and for nothing new', () => {
+        const en = (stats: Partial<CompleteBackupPreview['stats']>) =>
+            describeCompleteBackupPreview(
+                preview({ stats: { added: 0, updated: 0, skipped: 0, removed: 0, ...stats } }),
+                {
+                    t: translate('en'),
+                    lang: 'en',
+                    user: null,
+                },
+            );
 
-        expect(text).toContain('The backup holds no records.');
-        expect(text).toContain('Weight becomes 62 kg.');
+        expect(en({ added: 1 })).toContain(' and adds 1 record. ');
+        expect(en({ updated: 1 })).toContain(' and updates 1 record. ');
+        expect(en({ added: 3, updated: 2 })).toContain(' and adds 3 records and updates 2. ');
+        expect(en({ added: 1, updated: 2 })).toContain(' and adds 1 record and updates 2. ');
+        expect(en({ removed: 1 })).toContain(
+            ' and has no new records. 1 record deleted in the backup will be deleted here too. ',
+        );
     });
 
     it('names preview paths for people and keeps an unknown one as it is', () => {
@@ -195,20 +203,26 @@ describe('complete-backup outcome copy', () => {
         }
     });
 
-    it('reports what a merge did, and the parts it left alone', () => {
+    it('says a merge went through, and names the parts it left alone', () => {
         const t = translate('zh');
+        expect(describeCompleteBackupResult(mergeResult({ added: 3, updated: 1 }), 'applied', t)).toBe(
+            '备份合并好了。',
+        );
         expect(
             describeCompleteBackupResult(
                 mergeResult({ added: 3, updated: 1, removed: 0, blocked: ['transfem.plan'] }),
                 'applied',
                 t,
             ),
-        ).toBe('合并好了：新增 3 条，更新 1 条，删除 0 条。\n这些没有合并：女性化 HRT 用药方案。');
+        ).toBe('备份合并好了。这些合并不了，保持原样：女性化 HRT 用药方案。');
         expect(describeCompleteBackupResult(mergeResult(), 'settings-only', t)).toBe(
             '只导入了设置，备份里没有能合并的记录。',
         );
         expect(describeCompleteBackupResult(mergeResult({ blocked: ['weight'] }), 'nothing', t)).toBe(
-            '备份里没有能合并的内容。\n这些没有合并：体重。',
+            '备份里没有能合并的内容。这些合并不了，保持原样：体重。',
+        );
+        expect(describeCompleteBackupResult(mergeResult({ blocked: ['weight'] }), 'applied', translate('en'))).toBe(
+            "Backup merged. These can't be merged and stay as they are: weight.",
         );
     });
 

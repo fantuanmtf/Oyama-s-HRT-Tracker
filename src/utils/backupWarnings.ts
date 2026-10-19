@@ -5,9 +5,9 @@
  * website never encrypts it. These helpers keep the account target and the
  * plaintext warning explicit and testable without adding fields to the format.
  *
- * Everything here is what a person reads, so it says what will happen in
- * their language and leaves the record-level detail (ids, validator messages)
- * to the console.
+ * Everything here is what a person reads, so it says in a few plain sentences
+ * what will happen and leaves the detail (per-category counts, ids, validator
+ * messages) out of the dialog.
  */
 import type { Lang } from '../i18n/translations';
 import { LOCALE_MAP } from './helpers';
@@ -17,7 +17,6 @@ import {
     type CompleteBackupMergeResult,
     type CompleteBackupPreview,
 } from './backupBundle';
-import { MODE_KEYS } from './syncMerge';
 
 export type Translate = (key: string) => string;
 
@@ -43,20 +42,20 @@ export interface CompleteBackupAccountWarning {
 }
 
 /**
- * Name the target account and state the format limitation before a merge.
- * There is no source-account field to compare, so the warning promises no
- * cross-account detection.
+ * Ask the reader to check the backup is theirs, naming the account it merges
+ * into when they are signed in. There is no source-account field to compare,
+ * so the copy promises no cross-account detection.
  */
 export function describeCompleteBackupAccountWarning(
     user: BackupTargetUser | null | undefined,
     t: Translate,
 ): CompleteBackupAccountWarning {
     const target = resolveCompleteBackupTarget(user);
-    const targetName =
+    const line =
         target.kind === 'account'
-            ? t('import.bundle_target_account').replace('{name}', target.username)
-            : t('import.bundle_target_local');
-    return { target, lines: [t('import.bundle_into').replace('{target}', targetName)] };
+            ? t('import.bundle_yours_account').replace('{name}', target.username)
+            : t('import.bundle_yours');
+    return { target, lines: [line] };
 }
 
 export interface CompleteBackupExportWarning {
@@ -73,8 +72,6 @@ export function describeCompleteBackupExportWarning(t: Translate): CompleteBacku
         confirmLabel: t('export.complete_confirm_btn'),
     };
 }
-
-const RECORD_CATEGORIES = ['events', 'labResults', 'doseTemplates', 'quickDoses', 'supplies', 'plan'] as const;
 
 /**
  * What a person calls a preview path: `transfem.events`, `transmasc.deletions`,
@@ -104,53 +101,43 @@ const formatBackupDate = (iso: string, lang: Lang): string => {
     return date.toLocaleString(LOCALE_MAP[lang] || 'en-US', { dateStyle: 'medium', timeStyle: 'short' });
 };
 
+/** `{n}` copy, with its `_one` form so English reads "1 record". */
+const countText = (key: string, n: number, t: Translate): string =>
+    t(n === 1 ? `${key}_one` : key).replace('{n}', String(n));
+
+/** No space after a CJK full stop, which carries its own. */
+const joinSentences = (sentences: string[]): string =>
+    sentences.reduce((text, next) => (text ? `${text}${/[。！？]$/.test(text) ? '' : ' '}${next}` : next), '');
+
+const describeRecordChanges = ({ added, updated }: CompleteBackupPreview['stats'], t: Translate): string => {
+    if (added > 0 && updated > 0) {
+        return t(added === 1 ? 'import.bundle_will_add_update_one' : 'import.bundle_will_add_update')
+            .replace('{added}', String(added))
+            .replace('{updated}', String(updated));
+    }
+    if (added > 0) return countText('import.bundle_will_add', added, t);
+    if (updated > 0) return countText('import.bundle_will_update', updated, t);
+    return t('import.bundle_nothing_new');
+};
+
 /**
- * The confirmation shown before a complete bundle is merged: when it was made,
- * where it goes, what it holds, and what the merge will change.
+ * The confirmation shown before a complete bundle is merged, in two or three
+ * sentences: when it was made and how many records it brings, what it deletes
+ * or cannot merge if anything, and a check that it is the reader's.
  */
 export function describeCompleteBackupPreview(
     preview: CompleteBackupPreview,
     { t, lang, user }: { t: Translate; lang: Lang; user: BackupTargetUser | null | undefined },
 ): string {
-    const intro = [
-        t('import.bundle_from').replace('{date}', preview.createdAt ? formatBackupDate(preview.createdAt, lang) : ''),
-        ...describeCompleteBackupAccountWarning(user, t).lines,
+    const sentences = [
+        t('import.bundle_from')
+            .replace('{date}', preview.createdAt ? formatBackupDate(preview.createdAt, lang) : '')
+            .replace('{what}', describeRecordChanges(preview.stats, t)),
     ];
-
-    const contents: string[] = [];
-    for (const mode of MODE_KEYS) {
-        const counts = preview.counts[mode];
-        const parts = RECORD_CATEGORIES.filter(category => counts[category] > 0).map(category =>
-            t('import.bundle_count')
-                .replace('{name}', t(`import.bundle_cat_${category}`))
-                .replace('{n}', String(counts[category])),
-        );
-        if (!parts.length) continue;
-        contents.push(
-            t('import.bundle_mode_line')
-                .replace('{mode}', t(`mode.${mode}`))
-                .replace('{list}', parts.join(t('import.bundle_sep'))),
-        );
-    }
-    if (!contents.length) contents.push(t('import.bundle_empty'));
-
-    const { added, updated, removed } = preview.stats;
-    const changes = [
-        t('import.bundle_changes')
-            .replace('{added}', String(added))
-            .replace('{updated}', String(updated))
-            .replace('{removed}', String(removed)),
-    ];
-    if (removed > 0) changes.push(t('import.bundle_removed_note'));
-    const { weight, pkParams, calibration } = preview.scalars;
-    if (weight && (weight.action === 'added' || weight.action === 'updated')) {
-        changes.push(t('import.bundle_weight').replace('{kg}', String(weight.incoming)));
-    }
-    if (pkParams && (pkParams.action === 'added' || pkParams.action === 'updated')) changes.push(t('import.bundle_pk'));
-    if (calibration?.action === 'overwrite') changes.push(t('import.bundle_calibration'));
-    if (preview.blocked.length) changes.push(describeBlockedParts(preview.blocked, t));
-
-    return [intro.join('\n'), contents.join('\n'), changes.join('\n')].join('\n\n');
+    if (preview.stats.removed > 0) sentences.push(countText('import.bundle_will_remove', preview.stats.removed, t));
+    if (preview.blocked.length) sentences.push(describeBlockedParts(preview.blocked, t));
+    sentences.push(...describeCompleteBackupAccountWarning(user, t).lines);
+    return joinSentences(sentences);
 }
 
 /**
@@ -162,23 +149,26 @@ export function describeUnreadableCompleteBackup(preview: CompleteBackupPreview,
     return t(newer ? 'import.bundle_unknown_version' : 'import.bundle_invalid');
 }
 
-/** What to tell the person after a merge, by what it actually did. */
+/**
+ * What to tell the person after a merge, by what it actually did. The preview
+ * already gave the numbers, so a merge that went through just says so.
+ */
 export function describeCompleteBackupResult(
     result: CompleteBackupMergeResult,
     outcome: 'applied' | 'settings-only' | 'nothing',
     t: Translate,
 ): string {
-    const lines =
-        outcome === 'applied'
-            ? [
-                  t('import.bundle_merge_success')
-                      .replace('{added}', String(result.added))
-                      .replace('{updated}', String(result.updated))
-                      .replace('{removed}', String(result.removed)),
-              ]
-            : [t(outcome === 'settings-only' ? 'import.bundle_settings_only' : 'import.bundle_nothing')];
-    if (result.blocked.length) lines.push(describeBlockedParts(result.blocked, t));
-    return lines.join('\n');
+    const sentences = [
+        t(
+            outcome === 'applied'
+                ? 'import.bundle_merged'
+                : outcome === 'settings-only'
+                  ? 'import.bundle_settings_only'
+                  : 'import.bundle_nothing',
+        ),
+    ];
+    if (result.blocked.length) sentences.push(describeBlockedParts(result.blocked, t));
+    return joinSentences(sentences);
 }
 
 /**

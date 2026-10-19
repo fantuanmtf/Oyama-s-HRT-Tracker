@@ -448,7 +448,9 @@ const AppContent = () => {
                         );
                     },
                     {
-                        danger: true,
+                        // A merge that only adds records is not a red-button
+                        // action; one that deletes local records is.
+                        danger: current.stats.removed > 0,
                         title: t('import.bundle_preview_title'),
                         confirmLabel: t('import.bundle_merge_btn'),
                         onCancel: () => resolve(false),
