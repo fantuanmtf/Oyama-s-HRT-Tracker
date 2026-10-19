@@ -460,3 +460,105 @@ deletion counts/ids.
   and the worktree was clean before this docs-only note.
 - This note is a follow-up commit on the same branch; no other ref, main,
   upstream, Tools checkout, PR, merge, or release was changed.
+
+## Website complete-backup review fixes (2026-10-19)
+
+- **Branch/worktree:** `agent/add-gpg-website` in
+  `/tmp/opencode/hrt-fix-website-p1`; base `48ae09f9b49db7848916b1b33de303a36006971e`.
+- **Tools reference:** `Recovery/Tools` @ `38c80fc` was read only through git
+  objects; no Tools checkout, branch, or file was changed.
+- **Code + tests commit:** `250eeefb4b03aa8705be29244f98c3d81623d186` —
+  `fix: harden complete-backup export and merge semantics`.
+- **Files:** `src/utils/backupBundle.ts`, `src/App.tsx`,
+  `src/hooks/useAppData.ts`, `src/i18n/translations.ts`,
+  `tests/backupBundle.test.ts`.
+
+### Fixes
+
+- **P1-1 expired local tombstone:** `reconcileBundle` prunes the local tombstone
+  map with `pruneTombstones(..., now)` before `planCategoryMerge`. An expired
+  local deletion no longer hides an older incoming record. Regression test:
+  a 181-day-old local tombstone plus a 182-day-old incoming record restores the
+  record.
+- **P1-2 prototype ids:** record validation rejects `__proto__`, `constructor`,
+  and `prototype`; tombstone validation already did. Local tombstone maps are
+  re-copied into null-prototype objects, accepted/candidate maps use
+  null-prototype storage, and every lookup uses `Object.hasOwn` (record
+  indexes remain `Map`). Regression tests cover rejected record/tombstone ids
+  and an unrelated `toString` record not being hidden by a local `constructor`
+  key.
+- **P1-3 export/importer parity:** export now shares `MAX_IMPORT_ENTRIES`
+  (refuses above the limit), collapses duplicate ids to the newest copy (last
+  copy without stamps) with a report, drops invalid records with a report, and
+  reports dropped tombstone/stamp entries. A new
+  `CompleteBackupExportReport`/`CompleteBackupExportError` surface carries the
+  issues to the UI. One `isDrugCode` rule now governs events, templates, quick
+  doses, supplies, and plan, so a cross-version `FUTURE1` ester round-trips in
+  every category. Tests cover duplicates, >20,000 entries, invalid records, and
+  the cross-version ester.
+- **P1-4 clock-skew asymmetry:** export validators receive the same clock and
+  future-stamp bound as import. Future records are dropped/reported, and future
+  weight/PK stamps are omitted/reported. Tests cover each stamp and future
+  tombstones.
+- **P2-1 stale confirmation closure:** `AppContent` keeps a latest
+  preview/apply/build snapshot in `completeBackupRef`. Every confirm path
+  re-previews, compares a stable `completeBackupPreviewFingerprint`, re-opens
+  the preview if counts/conflicts/scalars changed, and applies through the
+  latest hook closure. The calibration gate and plaintext export confirmation
+  use the same latest snapshot; export builds at confirm time.
+- **P2-2 preferences-only:** a new pure `classifyCompleteBackupOutcome` returns
+  `applied`, `settings-only`, or `nothing`. The UI applies returned preferences
+  even when `applied` is empty and shows a settings-only result; tests cover the
+  data-layer result.
+- **P2-3 `applied`/`writeNeeded`:** `planDeletions` sets `writeNeeded` only when
+  an accepted incoming tombstone survives, and a category blocked during
+  reconciliation removes its accepted tombstones and recomputes the flag.
+  `classifyCompleteBackupOutcome` reports `nothing` when every category is
+  blocked, so the UI no longer claims success. Tests assert no `applied`
+  entries, `nothing`, and zero storage writes for an all-blocked bundle.
+- **P3 UI/report polish:** deletion-impact id lists use `formatIds` (five ids
+  plus `+N more`); duplicate-id issues use the same helper. Same-bundle
+  record+tombstone contradictions are reported with the winning side. The
+  `let parsed: any` warning in `App.tsx` is now `unknown`; ESLint reports no
+  `no-explicit-any` warning for the changed files.
+
+### Tests actually run
+
+- `npx tsc --noEmit` — pass.
+- Focused backup suite — 1 file, 33/33 tests pass.
+- Full Vitest — 19 files pass; 415 passed, 4 expected fail (419 total).
+- `npm run build` — Vite production build pass (existing chunk-size warning
+  only).
+- `npx prettier --check` on changed source/test/doc files — pass.
+- `npx eslint` on `src/App.tsx`, `src/utils/backupBundle.ts`,
+  `tests/backupBundle.test.ts` — no errors or warnings. A broader run including
+  `src/hooks/useAppData.ts` still shows the pre-existing hook warnings and two
+  pre-existing `any` warnings outside this change.
+- `git diff --check` — pass.
+
+### P2-1 verification limit
+
+The dialog-closure behavior has no browser/React test in this work item.
+Exact blocker: `vitest.config.ts` uses `environment: 'node'` and includes only
+`tests/**/*.test.ts`; there is no jsdom/happy-dom or React Testing Library
+dependency; `AppContent` is not exported and requires the Dialog, Auth,
+Language, HRT-mode, and PixelCat providers plus `localStorage`. The data-layer
+mechanism used by the fix (re-preview against changed active arrays and compare
+`completeBackupPreviewFingerprint`) is tested. The wiring inside `AppContent`
+is reviewed but not rendered in a test, so this handoff does not claim a
+browser-level regression test for P2-1.
+
+### Remaining limits / not changed
+
+- No L3/browser E2E, Replace, rollback transaction, signing, key management,
+  DB/Worker/Docker/License work, Tools branch change, PR, merge, or release.
+- Website import still uses `JSON.parse`, so duplicate JSON keys remain
+  last-wins (BTV-4); case-variant keys are not normalized (BTV-16).
+- Export and import are symmetric per device, but clocks more than five minutes
+  apart can still reject an otherwise valid bundle (BTV-13).
+- BTV-3 (`formatVersion: 1.0`) and BTV-7 (unknown per-record fields) remain
+  unresolved product/interface decisions.
+- The multi-key snapshot rollback remains application-level, not a
+  `localStorage` transaction.
+- Push status: pending at the time of this handoff; the final checkpoint records
+  the remote SHA for `origin/agent/add-gpg-website`.
