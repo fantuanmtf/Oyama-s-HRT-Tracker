@@ -26,6 +26,7 @@ import {
     describeCompleteBackupReplaceFailure,
     describeCompleteBackupResult,
     describeUnreadableCompleteBackup,
+    isPartialReplaceFailure,
 } from './utils/backupWarnings';
 import { useAppData } from './hooks/useAppData';
 import { useAppNavigation, tabForView, ViewKey } from './hooks/useAppNavigation';
@@ -500,7 +501,15 @@ const AppContent = () => {
                     resolve(true);
                 } catch (err) {
                     console.error(err);
-                    showDialog('alert', describeCompleteBackupReplaceFailure(err, t));
+                    // A partial write leaves its journal behind, and the store
+                    // half replaced. Reloading runs the recovery before
+                    // anything reads or syncs it, instead of asking the person
+                    // to know to reload.
+                    showDialog(
+                        'alert',
+                        describeCompleteBackupReplaceFailure(err, t),
+                        isPartialReplaceFailure(err) ? () => window.location.reload() : undefined,
+                    );
                     resolve(false);
                 }
             };

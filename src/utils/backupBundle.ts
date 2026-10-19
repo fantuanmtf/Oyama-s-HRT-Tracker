@@ -2092,6 +2092,51 @@ export function mergeCompleteBackupBundleToStorage(
     return result;
 }
 
+/** Ids this device holds for a category, in React state or in storage. */
+const heldIds = (context: CompleteBackupContext, mode: ModeKey, category: ArrayCategory): string[] => {
+    const stored = loadJSONFromStorage<unknown>(
+        context.storage,
+        modeKeyFor(context.owner, mode, CATEGORY_SUFFIX[category]),
+        [],
+    );
+    const records = [
+        ...(Array.isArray(stored) ? stored : []),
+        ...(mode === context.mode ? context.active[category] : []),
+    ];
+    return records.flatMap(record => (isObject(record) && isRecordId(record.id) ? [record.id] : []));
+};
+
+/**
+ * The deletions a replace leaves behind, by the rule the regular replace
+ * import uses: whatever this device holds that the backup leaves out is
+ * deleted now, so the next sync cannot bring it back from the cloud or another
+ * device; ids the backup brings back lose any tombstone; deletions this device
+ * or the backup already knew about stay.
+ */
+const replacementTombstones = (
+    context: CompleteBackupContext,
+    mode: ModeKey,
+    block: CompleteBackupMode,
+    now: number,
+): Tombstones => {
+    const local = readLocalTombstones(context.storage, context.owner, mode);
+    const incoming = block.deletions ?? emptyTombstones();
+    const out = emptyTombstones();
+    for (const kind of RECORD_KINDS) {
+        const category = KIND_CATEGORY[kind];
+        const map = nullMap<number>();
+        for (const source of [local[kind], incoming[kind]]) {
+            for (const [id, at] of Object.entries(source)) {
+                if (!hasOwn(map, id) || at > map[id]) map[id] = at;
+            }
+        }
+        for (const id of heldIds(context, mode, category)) map[id] = now;
+        for (const record of block[category] ?? []) delete map[record.id];
+        out[kind] = pruneTombstoneMap(map, now);
+    }
+    return out;
+};
+
 export interface CompleteBackupReplaceResult {
     applied: string[];
     /** The exact arrays written to each mode, for the active-mode React state. */
@@ -2109,9 +2154,13 @@ export interface CompleteBackupReplaceResult {
  * both tombstone maps, and calibration must be present, no record may have
  * been dropped by validation, and no category may contain duplicate ids.
  *
+ * Records this device holds that the bundle leaves out are tombstoned, as a
+ * regular replace import does, or cloud sync would merge them straight back.
+ *
  * Scalars the bundle omits are left alone. A supplied weight or PK value
- * replaces the local value and timestamp; a missing scalar does not mean
- * "clear" in the complete-backup contract.
+ * replaces the local value and is stamped now, as setting it by hand would be,
+ * so a newer value in the cloud does not win it back on the next sync; a
+ * missing scalar does not mean "clear" in the complete-backup contract.
  */
 export function replaceCompleteBackupBundleToStorage(
     raw: unknown,
@@ -2179,7 +2228,7 @@ export function replaceCompleteBackupBundleToStorage(
             (modeResult as Record<string, unknown>)[category] = records;
             result.applied.push(`${mode}.${category}`);
         }
-        const tombstones = block.deletions ?? emptyTombstones();
+        const tombstones = replacementTombstones(context, mode, block, now);
         writes.push({
             key: modeKeyFor(context.owner, mode, 'deletions'),
             value: JSON.stringify(tombstones),
@@ -2191,10 +2240,7 @@ export function replaceCompleteBackupBundleToStorage(
 
     if (parsed.weight !== undefined) {
         writes.push({ key: nsFor(context.owner, 'weight'), value: String(parsed.weight) });
-        writes.push({
-            key: nsFor(context.owner, 'weight-at'),
-            value: parsed.weightUpdatedAt !== undefined ? String(parsed.weightUpdatedAt) : null,
-        });
+        writes.push({ key: nsFor(context.owner, 'weight-at'), value: String(now) });
         result.weight = parsed.weight;
         result.applied.push('weight');
     }
@@ -2203,10 +2249,7 @@ export function replaceCompleteBackupBundleToStorage(
             key: nsFor(context.owner, 'pk-params'),
             value: parsed.pkParams === null ? null : JSON.stringify(parsed.pkParams),
         });
-        writes.push({
-            key: nsFor(context.owner, 'pk-params-at'),
-            value: parsed.pkParamsUpdatedAt !== undefined ? String(parsed.pkParamsUpdatedAt) : null,
-        });
+        writes.push({ key: nsFor(context.owner, 'pk-params-at'), value: String(now) });
         result.pkParams = parsed.pkParams;
         result.applied.push('pkParams');
     }

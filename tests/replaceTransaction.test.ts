@@ -16,6 +16,7 @@ import {
     recoverReplaceJournal,
     type ReplaceJournalEntry,
 } from '../src/utils/replaceJournal';
+import { mergeSyncStates, normalizeSyncState } from '../src/utils/syncMerge';
 
 const NOW = 1_800_000_000_000;
 
@@ -176,16 +177,91 @@ describe('complete-backup replace transaction', () => {
         expect(JSON.parse(storage.getItem('hrt-masc-events')!)).toEqual([event('tm-event')]);
         expect(JSON.parse(storage.getItem('hrt-masc-lab-results')!)).toEqual([lab('tm-lab')]);
         expect(storage.getItem('hrt-weight')).toBe('65');
-        expect(storage.getItem('hrt-weight-at')).toBe(String(NOW - 60_000));
+        // Stamped as the moment of the replace, like a value set by hand, so a
+        // newer value in the cloud does not win it back on the next sync.
+        expect(storage.getItem('hrt-weight-at')).toBe(String(NOW));
         expect(JSON.parse(storage.getItem('hrt-pk-params')!)).toEqual({
             ...DEFAULT_PK_PARAMS,
             e2_kClear: 0.42,
         });
+        expect(storage.getItem('hrt-pk-params-at')).toBe(String(NOW));
         expect(storage.getItem('hrt-cal-method')).toBe('off');
         expect(storage.getItem('hrt-cal-history-mode')).toBe('forward');
         expect(storage.getItem('auth_token')).toBe('SECRET-TOKEN-SENTINEL');
         expect(storage.getItem('app-auto-backup')).toBe('false');
         expect(storage.getItem(REPLACE_JOURNAL_KEY)).toBeNull();
+    });
+
+    it('deletes what the backup leaves out, so a sync cannot bring it back', () => {
+        const storage = new FakeStorage();
+        seedExistingData(storage);
+        storage.setItem(
+            'hrt-deletions',
+            JSON.stringify({
+                events: { 'deleted-before': NOW - 1_000, 'tf-event': NOW - 2_000, ancient: NOW - 200 * 86_400_000 },
+                labResults: {},
+                doseTemplates: {},
+            }),
+        );
+        const incoming = bundle({
+            modes: {
+                transfem: {
+                    ...mode('tf'),
+                    deletions: { events: { 'bundle-deleted': NOW - 3_000 }, labResults: {}, doseTemplates: {} },
+                } as unknown as CompleteBackupMode,
+                transmasc: mode('tm'),
+            },
+        });
+        const inMemory = { ...active, events: [event('in-memory-only')] } as unknown as CompleteBackupActive;
+
+        const result = replaceCompleteBackupBundleToStorage(incoming, { ...context(storage), active: inMemory });
+
+        const transfem = JSON.parse(storage.getItem('hrt-deletions')!);
+        // Held here and left out of the backup: deleted now. Already known
+        // deletions stay; the one for a record the backup brings back goes,
+        // and so does one past its lifetime.
+        expect(transfem.events).toEqual({
+            'deleted-before': NOW - 1_000,
+            'bundle-deleted': NOW - 3_000,
+            'old-local': NOW,
+            'in-memory-only': NOW,
+        });
+        expect(JSON.parse(storage.getItem('hrt-masc-deletions')!)).toEqual({
+            events: { 'old-masc': NOW },
+            labResults: { 'old-masc-lab': NOW },
+            doseTemplates: {},
+        });
+        expect(result.modes.transfem?.deletions?.events).toEqual(transfem.events);
+
+        // The cloud copy still holds the old records. Merging it back in, as
+        // the next sync does, leaves only what the backup holds.
+        const stored = (key: string) => JSON.parse(storage.getItem(key) ?? '[]');
+        const local = normalizeSyncState({
+            modes: {
+                transfem: {
+                    events: stored('hrt-events'),
+                    labResults: stored('hrt-lab-results'),
+                    doseTemplates: stored('hrt-dose-templates'),
+                    deletions: transfem,
+                },
+                transmasc: {
+                    events: stored('hrt-masc-events'),
+                    labResults: stored('hrt-masc-lab-results'),
+                    doseTemplates: stored('hrt-masc-dose-templates'),
+                    deletions: stored('hrt-masc-deletions'),
+                },
+            },
+        });
+        const cloud = normalizeSyncState({
+            modes: {
+                transfem: { events: [event('old-local'), event('in-memory-only')] },
+                transmasc: { events: [event('old-masc')], labResults: [lab('old-masc-lab')] },
+            },
+        });
+        const { merged } = mergeSyncStates(local, cloud);
+        expect(merged.modes.transfem.events.map(e => e.id)).toEqual(['tf-event']);
+        expect(merged.modes.transmasc.events.map(e => e.id)).toEqual(['tm-event']);
+        expect(merged.modes.transmasc.labResults.map(l => l.id)).toEqual(['tm-lab']);
     });
 
     it('refuses an incomplete bundle before writing anything', () => {

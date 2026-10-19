@@ -143,42 +143,49 @@ export function describeCompleteBackupPreview(
 }
 
 /**
- * The confirmation before a complete backup replaces the device. It says the
- * count, names the target account, mentions display settings, and states that
- * the journal is recovery equipment, not an undo button.
+ * The confirmation before a complete backup replaces the device, in three
+ * sentences like the merge preview: when it was made and how many records it
+ * holds, that everything here becomes what it holds, and a check that it is
+ * the reader's, naming the account when they are signed in.
  */
 export function describeCompleteBackupReplace(
     preview: CompleteBackupPreview,
     { t, lang, user }: { t: Translate; lang: Lang; user: BackupTargetUser | null | undefined },
 ): string {
-    const total = Object.values(preview.counts).reduce(
+    const records = Object.values(preview.counts).reduce(
         (sum, counts) =>
             sum +
             counts.events +
             counts.labResults +
             counts.doseTemplates +
-            counts.deletions +
             counts.quickDoses +
             counts.supplies +
             counts.plan,
         0,
     );
-    const lines = [
-        t('import.replace_complete_message')
-            .replace('{date}', preview.createdAt ? formatBackupDate(preview.createdAt, lang) : '')
-            .replace('{n}', String(total)),
-        ...describeCompleteBackupAccountWarning(user, t).lines,
-    ];
-    if (Object.keys(preview.preferences.values).length > 0) lines.push(t('import.bundle_preferences'));
-    lines.push(t('import.replace_complete_journal'));
-    return lines.join('\n');
+    const target = resolveCompleteBackupTarget(user);
+    return joinSentences([
+        countText('import.replace_complete_from', records, t).replace(
+            '{date}',
+            preview.createdAt ? formatBackupDate(preview.createdAt, lang) : '',
+        ),
+        t('import.replace_complete_message'),
+        target.kind === 'account'
+            ? t('import.replace_complete_yours_account').replace('{name}', target.username)
+            : t('import.bundle_yours'),
+    ]);
 }
+
+/**
+ * A replace whose rollback failed too. Its journal is still in storage, and
+ * the next start restores the device from it.
+ */
+export const isPartialReplaceFailure = (err: unknown): boolean =>
+    err instanceof Error && (err.message === PARTIAL_WRITE_MESSAGE || err.message === REPLACE_PARTIAL_MESSAGE);
 
 /** After a failed replace: distinguish a clean rollback from a partial write. */
 export function describeCompleteBackupReplaceFailure(err: unknown, t: Translate): string {
-    const partial =
-        err instanceof Error && (err.message === PARTIAL_WRITE_MESSAGE || err.message === REPLACE_PARTIAL_MESSAGE);
-    return t(partial ? 'import.replace_complete_partial' : 'import.replace_complete_failed');
+    return t(isPartialReplaceFailure(err) ? 'import.replace_complete_partial' : 'import.replace_complete_failed');
 }
 
 /**

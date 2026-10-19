@@ -17,6 +17,7 @@ import {
     describeCompleteBackupReplaceFailure,
     describeCompleteBackupResult,
     describeUnreadableCompleteBackup,
+    isPartialReplaceFailure,
     resolveCompleteBackupTarget,
 } from '../src/utils/backupWarnings';
 
@@ -254,24 +255,58 @@ describe('complete-backup outcome copy', () => {
         );
     });
 
-    it('warns before replacing and distinguishes a partial replace', () => {
+    it('warns before replacing in three sentences, counting records and not deletions', () => {
         const t = translate('en');
         const text = describeCompleteBackupReplace(
             preview({
-                counts: { transfem: counts({ events: 2 }), transmasc: counts({ labResults: 1 }) },
+                counts: {
+                    transfem: counts({ events: 2, deletions: 9 }),
+                    transmasc: counts({ labResults: 1, plan: 1 }),
+                },
                 preferences: { values: { 'app-theme': 'dark' }, ignored: [], invalid: [] },
             }),
             { t, lang: 'en', user: { username: 'synthetic-user' } },
         );
-        expect(text).toContain('replaces every dose');
-        expect(text).toContain('merges into the account synthetic-user');
-        expect(text).toContain('display settings');
-        expect(text).toContain('recovery journal');
+        expect(text.startsWith('This backup is from ')).toBe(true);
+        expect(text).toContain('2030');
+        expect(
+            text.endsWith(
+                ' and holds 4 records. The records and settings on this device will be replaced by the ones in it, and with cloud sync on, your other devices change too. ' +
+                    "You're signed in as synthetic-user, so make sure this backup is yours.",
+            ),
+        ).toBe(true);
+        // No merge wording in a replace, and no machinery.
+        expect(text).not.toMatch(/merge|journal|deletion|\n/i);
+
+        const one = describeCompleteBackupReplace(
+            preview({ counts: { transfem: counts({ events: 1 }), transmasc: counts() } }),
+            { t, lang: 'en', user: null },
+        );
+        expect(one).toContain(' and holds 1 record. ');
+        expect(one.endsWith(' Make sure this backup is yours.')).toBe(true);
+    });
+
+    it('says the same in Chinese, run on without spaces', () => {
+        const text = describeCompleteBackupReplace(
+            preview({ counts: { transfem: counts({ events: 3 }), transmasc: counts() } }),
+            { t: translate('zh'), lang: 'zh', user: { username: '合成账户' } },
+        );
+        expect(text).toContain('的备份，有 3 条记录。这台设备上的记录和设置会换成它的内容，');
+        expect(text.endsWith('你登录的是 合成账户，请确认这份备份是你的。')).toBe(true);
+        expect(text).not.toContain('。 ');
+        expect(text).not.toMatch(/合并|日志/);
+    });
+
+    it('says a failed replace changed nothing, unless the rollback failed too', () => {
+        const t = translate('en');
         expect(describeCompleteBackupReplaceFailure(new Error('synthetic write failure'), t)).toBe(
             'Restore failed. Nothing on this device was changed.',
         );
         expect(describeCompleteBackupReplaceFailure(new Error(REPLACE_PARTIAL_MESSAGE), t)).toBe(
-            'The restore did not finish, and part of it may already have been written. Reload the app so it can recover the journal.',
+            'The restore did not finish. The app will reload and put this device back the way it was.',
         );
+        expect(isPartialReplaceFailure(new Error(REPLACE_PARTIAL_MESSAGE))).toBe(true);
+        expect(isPartialReplaceFailure(new Error('synthetic write failure'))).toBe(false);
+        expect(isPartialReplaceFailure('not an error')).toBe(false);
     });
 });

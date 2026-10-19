@@ -111,7 +111,8 @@ const ImportSection: React.FC<ImportSectionProps> = ({ onImportJson, onReplaceJs
                             spellCheck={false}
                         />
                         <div className="flex justify-end gap-2">
-                            <button onClick={handleTextReplace} disabled={!text.trim()} className="btn-danger">
+                            {/* Red is for the confirm that follows, not the way to it. */}
+                            <button onClick={handleTextReplace} disabled={!text.trim()} className="btn-secondary">
                                 {t('import.replace_complete_paste_btn')}
                             </button>
                             <button onClick={handleTextImport} disabled={!text.trim()} className="btn-primary">

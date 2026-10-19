@@ -240,14 +240,14 @@ export const TRANSLATIONS_BASE = {
         'import.replace_complete_file_btn': '选择文件',
         'import.replace_complete_paste_btn': '替换本机',
         'import.replace_complete_title': '用完整备份替换本机？',
-        'import.replace_complete_message':
-            '这是 {date} 的备份，包含 {n} 条记录和删除记录。本机的所有用药记录、检查结果、模板、快捷剂量、药量库存、用药方案、删除记录和校准设置都会被它替换。',
-        'import.replace_complete_journal':
-            '应用前会先写恢复日志；中途中断会回滚。但替换后无法撤销，只能再用另一份备份恢复。',
+        'import.replace_complete_from': '这是 {date} 的备份，有 {n} 条记录。',
+        'import.replace_complete_from_one': '这是 {date} 的备份，有 1 条记录。',
+        'import.replace_complete_message': '这台设备上的记录和设置会换成它的内容，开着云同步的话，其他设备也会跟着换。',
+        'import.replace_complete_yours_account': '你登录的是 {name}，请确认这份备份是你的。',
         'import.replace_complete_btn': '全部替换',
         'import.replace_complete_success': '完整备份已恢复到本机。',
         'import.replace_complete_failed': '恢复失败，本机数据没有改变。',
-        'import.replace_complete_partial': '恢复没有完成，可能有部分数据已经写入；请重新加载应用以执行恢复日志。',
+        'import.replace_complete_partial': '恢复没有完成，应用会重新加载，把这台设备还原成替换之前的样子。',
 
         'error.nonPositive': '不能输入小于等于 0 的值。',
         'error.weightRange': '体重需在 20 到 400 公斤之间。',
@@ -1165,15 +1165,16 @@ export const TRANSLATIONS_BASE = {
         'import.replace_complete_file_btn': 'Choose File',
         'import.replace_complete_paste_btn': 'Replace device',
         'import.replace_complete_title': 'Replace this device from a complete backup?',
+        'import.replace_complete_from': 'This backup is from {date} and holds {n} records.',
+        'import.replace_complete_from_one': 'This backup is from {date} and holds 1 record.',
         'import.replace_complete_message':
-            'This backup is from {date} and holds {n} records and deletion entries. It replaces every dose, lab result, template, quick dose, supply, plan entry, deletion record, and the calibration on this device.',
-        'import.replace_complete_journal':
-            'The app writes a recovery journal first and rolls back if it is interrupted. The replace still cannot be undone except by restoring another backup.',
+            'The records and settings on this device will be replaced by the ones in it, and with cloud sync on, your other devices change too.',
+        'import.replace_complete_yours_account': "You're signed in as {name}, so make sure this backup is yours.",
         'import.replace_complete_btn': 'Replace everything',
         'import.replace_complete_success': 'Complete backup restored.',
         'import.replace_complete_failed': 'Restore failed. Nothing on this device was changed.',
         'import.replace_complete_partial':
-            'The restore did not finish, and part of it may already have been written. Reload the app so it can recover the journal.',
+            'The restore did not finish. The app will reload and put this device back the way it was.',
 
         'error.nonPositive': 'Value must be greater than zero.',
         'error.weightRange': 'Weight must be between 20 and 400 kg.',

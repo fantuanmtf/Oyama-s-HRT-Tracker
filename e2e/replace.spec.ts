@@ -107,10 +107,12 @@ test.describe('complete backup replace (L3 browser)', () => {
         const dialog = page.getByRole('alertdialog');
         await expect(dialog).toContainText('Replace this device from a complete backup?');
         await expect(dialog).toContainText('This backup is from');
-        await expect(dialog).toContainText('It replaces every dose');
-        await expect(dialog).toContainText("It also applies the backup's display settings.");
-        await expect(dialog).toContainText('The app writes a recovery journal first');
+        await expect(dialog).toContainText('and holds 12 records.');
+        await expect(dialog).toContainText(
+            'The records and settings on this device will be replaced by the ones in it, and with cloud sync on, your other devices change too.',
+        );
         await expect(dialog).toContainText('Make sure this backup is yours.');
+        await expect(dialog).not.toContainText('journal');
         await confirmDialog(page, 'Replace everything');
 
         await expect(page.getByRole('dialog')).toContainText('Complete backup restored.');
@@ -124,7 +126,8 @@ test.describe('complete backup replace (L3 browser)', () => {
         ]);
         expect(await readStorage<DoseEventFixture[]>(page, 'hrt-masc-lab-results')).toHaveLength(1);
         expect(await readStorage(page, 'hrt-weight')).toBe(66);
-        expect(await readStorage(page, 'hrt-weight-at')).toBe(newer);
+        // Stamped at the replace, so a cloud value cannot win it back.
+        expect(await readStorage<number>(page, 'hrt-weight-at')).toBeGreaterThan(newer);
         expect((await readStorage<Record<string, number>>(page, 'hrt-pk-params'))?.e2_kClear).toBe(0.43);
         expect(await readStorage(page, 'hrt-cal-method')).toBe('off');
         expect(await readStorage(page, 'hrt-cal-history-mode')).toBe('forward');
@@ -273,7 +276,15 @@ test.describe('complete backup replace (L3 browser)', () => {
     });
 });
 
+/**
+ * The old records are gone, and are deletions now, so a cloud sync cannot
+ * merge them back.
+ */
 function assertNoOldData(bundle: { modes: { transfem: BundleMode; transmasc: BundleMode } }): void {
-    const ids = JSON.stringify(bundle.modes);
-    for (const old of ['old-local', 'old-masc', 'old-masc-lab']) expect(ids).not.toContain(old);
+    const { transfem, transmasc } = bundle.modes;
+    const records = JSON.stringify([transfem, transmasc].map(({ deletions: _deletions, ...categories }) => categories));
+    for (const old of ['old-local', 'old-masc', 'old-masc-lab']) expect(records).not.toContain(old);
+    expect(Object.keys(transfem.deletions?.events ?? {})).toContain('old-local');
+    expect(Object.keys(transmasc.deletions?.events ?? {})).toContain('old-masc');
+    expect(Object.keys(transmasc.deletions?.labResults ?? {})).toContain('old-masc-lab');
 }
