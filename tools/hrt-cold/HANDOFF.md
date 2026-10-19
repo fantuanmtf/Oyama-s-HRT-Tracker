@@ -22,7 +22,7 @@ pull request.
 | `36ccf29` | `feat(tools): add offline OpenPGP cold-backup CLI` |
 | `07cc714` | `ci(tools): test hrt-cold on Linux and Windows` |
 | `adb564f` | `docs(tools): record Tools checkpoint` |
-| this commit | `docs(tools): record native CI results` |
+| `f73f0c9` | `fix(tools): reject packets after encrypted OpenPGP payload` |
 
 ## Files
 
@@ -59,7 +59,7 @@ pull request.
 
 ## Security remediation after checkpoint
 
-Two review findings were fixed on top of the checkpoint:
+Three review findings were fixed on top of the checkpoint:
 
 - **P0 — unencrypted OpenPGP payload accepted.** `decrypt` now checks
   go-crypto message metadata (`IsEncrypted` and `DecryptedWith`) and consumes
@@ -71,11 +71,20 @@ Two review findings were fixed on top of the checkpoint:
   `recipientVerified: false`, and treats `--recipient` matching as
   informational. It rejects containers without a public-key recipient and
   encrypted data packet.
+- **P0 — trailing plaintext after an empty encrypted packet accepted.**
+  `decrypt` and `inspect` now share `validateOuterPacketSequence`. It skips only
+  legal marker packets, collects PKESK packets, requires exactly one
+  integrity-protected encrypted data packet, and requires EOF immediately after
+  it. Trailing literal, compressed, and signed packets, a second encrypted
+  packet, missing PKESK, or missing encrypted data are rejected before any
+  output is written.
 
 Regression tests cover literal, compressed-plaintext, signed-only, missing
-recipient, missing encrypted payload, forged PKESK key ID, wrong key,
-tamper, and truncation, and assert that no output file is created on failure.
-This is an engineering fix with regression tests, not a cryptographic audit.
+recipient, missing encrypted payload, forged PKESK key ID, empty encrypted
+packet with trailing literal/compressed/signed packets, multi-recipient and
+hidden-recipient messages, legal marker packets, wrong key, tamper, and
+truncation, and assert that no output file is created on failure. This is an
+engineering fix with regression tests, not a cryptographic audit.
 
 ## Container and limits
 
@@ -98,8 +107,8 @@ Working directory: `tools/hrt-cold` on Linux/amd64 with Go 1.27.1.
 | --- | --- |
 | `gofmt -l .` | clean |
 | `go vet ./...` | PASS |
-| `go test -count=1 -v ./...` | PASS — 26 top-level tests, 50 subtests, `ok ... 6.826s` |
-| `go test -race -count=1 ./...` | PASS — `ok ... 16.482s` |
+| `go test -count=1 -v ./...` | PASS — 32 top-level tests, 62 subtests, `ok ... 8.193s` |
+| `go test -race -count=1 ./...` | PASS — `ok ... 18.452s` |
 | `go build -trimpath ./...` | PASS |
 | `go mod verify` | PASS — `all modules verified` |
 | `git diff --check` | PASS |
@@ -142,6 +151,10 @@ Tests use fresh keys generated at test time and synthetic data only. Covered:
 - compressed-plaintext payload;
 - signed-only payload;
 - forged PKESK recipient key ID;
+- empty integrity-protected encrypted packet followed by a trailing literal,
+  compressed, or signed packet;
+- second encrypted data packet or marker packet after the encrypted data packet;
+- multi-recipient and hidden-recipient messages, plus legal marker packets;
 - container with no public-key recipient;
 - container with no encrypted data packet;
 - unknown container version;

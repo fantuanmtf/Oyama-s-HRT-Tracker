@@ -86,11 +86,15 @@ hrt-cold decrypt \
   --out restored-complete-backup.json
 ```
 
-- Validates the container before using the key.
-- Requires a genuinely encrypted OpenPGP message: at least one public-key
-  encrypted session-key packet and an integrity-protected encrypted data packet.
-  A literal, compressed-plaintext, or signed-only payload is rejected without
-  writing output.
+- Validates the container and the outer OpenPGP packet sequence before using
+  the key.
+- Requires a genuinely encrypted OpenPGP message: one or more public-key
+  encrypted session-key packets, then exactly one integrity-protected encrypted
+  data packet, followed immediately by end of payload. Only legal marker
+  packets may appear before the encrypted data packet. Any trailing packet,
+  second encrypted data packet, missing recipient, or missing encrypted data
+  packet is rejected. A literal, compressed-plaintext, or signed-only payload
+  is rejected without writing output.
 - Verifies the OpenPGP integrity check and rejects a wrong key, wrong
   passphrase, tampered ciphertext, truncation, unknown version, reserved flags,
   or trailing bytes. The private key must actually decrypt the session key; a
@@ -122,9 +126,10 @@ hrt-cold inspect --in complete-backup.hrtb --recipient backup-public.asc
   informational; a mismatch does not fail `inspect`, and a match is not
   recipient verification. Only a successful `decrypt` demonstrates that the
   private key participated.
-- `inspect` rejects a payload that is not a public-key-encrypted OpenPGP
-  message: literal, compressed-plaintext, signed-only, recipient-less, and
-  payload-less containers fail instead of being reported as valid backups.
+- `inspect` uses the same outer packet-sequence validator as `decrypt`. It
+  rejects literal, compressed-plaintext, signed-only, recipient-less, and
+  payload-less containers, as well as any packet after the encrypted data
+  packet, instead of reporting them as valid backups.
 - `inspect` cannot detect tampering of the ciphertext because it does not
   decrypt or verify the MDC. Use `decrypt` for integrity verification.
 
@@ -152,7 +157,10 @@ Rules enforced by this implementation:
 - The payload is a standard OpenPGP message. This tool encrypts without
   compression. No custom cryptography or KDF is defined.
 - A decryptable payload must contain at least one public-key encrypted
-  session-key packet followed by an integrity-protected encrypted data packet.
+  session-key packet followed by exactly one integrity-protected encrypted data
+  packet and then EOF. Legal marker packets may be skipped before the encrypted
+  data packet; any packet after it is rejected, including an unencrypted
+  literal, compressed, or signed packet.
 - The plaintext bundle is at most 15 MiB, leaving room for OpenPGP overhead
   inside the 16 MiB container.
 
@@ -224,7 +232,9 @@ keys, passphrases, real health data, or production backups are committed.
 Coverage includes round-trip encryption/decryption, wrong key, wrong passphrase,
 tamper, truncation, unknown version, reserved flags, bad magic, trailing bytes,
 unencrypted literal, compressed-plaintext, and signed-only payloads, forged
-PKESK recipient key IDs, missing recipient/encrypted-payload packets, existing
+PKESK recipient key IDs, missing recipient/encrypted-payload packets, an empty
+encrypted packet followed by trailing literal/compressed/signed packets,
+multi-recipient and hidden-recipient messages, legal marker packets, existing
 output, oversized input, malformed bundle, missing output parent, atomic
 no-replace publication, concurrent writers, temp cleanup, advertised-recipient
 matching, and passphrase-file mode checks on Unix.

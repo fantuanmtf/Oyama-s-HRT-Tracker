@@ -18,6 +18,11 @@ project. The website does **not** encrypt or decrypt this file.
 - A Tools decryptor must require a genuinely encrypted OpenPGP message, not
   merely a parseable OpenPGP payload. Literal, compressed-plaintext, and
   signed-only payloads must be rejected without producing a bundle.
+- The outer OpenPGP packet sequence must contain one or more PKESK packets and
+  exactly one integrity-protected encrypted data packet, with no packet after
+  it. Only legal marker packets may be skipped before the encrypted data
+  packet. A trailing literal, compressed, or signed packet must be rejected
+  even when the encrypted data packet itself is empty.
 - OpenPGP public-key encrypted session-key (PKESK) recipient key IDs and
   fingerprints are unauthenticated metadata. Tools may display them as
   advertised values, but must not present them as recipient verification.
