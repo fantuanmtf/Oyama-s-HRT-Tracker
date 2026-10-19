@@ -1,6 +1,9 @@
 # Website ↔ Tools Complete-Backup Interface
 
 **Status:** website export/import data layer implemented; Replace is `BLOCKED`.
+**Tools reference:** `Recovery/Tools` @ `7ee628b6455dee31ca044e453dff31e6d17a7e56`
+(read-only), `tools/hrt-cold/`. The Tools CLI is an experimental checkpoint; the
+`.hrtb` container is not stable and is not wired into the website.
 **Scope:** hand-off format between the website and the separate offline Tools
 project. The website does **not** encrypt or decrypt this file.
 
@@ -18,17 +21,22 @@ project. The website does **not** encrypt or decrypt this file.
 - A Tools decryptor must require a genuinely encrypted OpenPGP message, not
   merely a parseable OpenPGP payload. Literal, compressed-plaintext, and
   signed-only payloads must be rejected without producing a bundle.
-- The outer OpenPGP packet sequence must contain one or more PKESK packets and
-  exactly one integrity-protected encrypted data packet, with no packet after
-  it. Only legal marker packets may be skipped before the encrypted data
-  packet. A trailing literal, compressed, or signed packet must be rejected
-  even when the encrypted data packet itself is empty.
-- OpenPGP public-key encrypted session-key (PKESK) recipient key IDs and
-  fingerprints are unauthenticated metadata. Tools may display them as
-  advertised values, but must not present them as recipient verification.
-  Only successful decryption shows that a private key participated.
-- A failed decryption, wrong key, failed integrity check, or unencrypted
-  payload must not write a plaintext bundle output.
+- The outer OpenPGP packet sequence must contain one or more public-key
+  encrypted session-key (PKESK) packets and exactly one integrity-protected
+  encrypted data packet, with no packet after it. Only legal marker packets
+  may be skipped before the encrypted data packet. A trailing literal,
+  compressed, or signed packet must be rejected even when the encrypted data
+  packet itself is empty.
+- PKESK recipient key IDs and fingerprints are unauthenticated metadata. Tools
+  may display them as advertised values, but must not present them as
+  recipient verification. Only successful decryption shows that a private key
+  participated.
+- A failed decryption, wrong key, wrong passphrase, failed integrity check,
+  truncation, or unencrypted payload must not write a plaintext bundle output.
+- The Tools `inspect` command may read only the outer container and the
+  unauthenticated PKESK advertisements. It does not decrypt, verify the
+  message integrity check (MDC), or detect ciphertext tampering; its
+  `recipientVerified` result remains false.
 
 ## Envelope
 
@@ -123,22 +131,78 @@ Unknown preference keys in an imported bundle are reported and ignored.
      contents, or any same id in `quickDoses`/`supplies`/`plan`: **abort that
      category** and report it.
    - Duplicate id inside the bundle or the local category: abort that category.
-4. Tombstones are unioned; a restored record clears its own tombstone.
+4. Tombstones are unioned; a restored record clears its own tombstone. Expired
+   local tombstones are pruned and the pruned map is written back during the
+   same merge, so a later sync cannot re-delete a restored record.
 5. Preferences are returned to the website's React state; the data layer does
    not write credential keys.
+6. Record and tombstone ids that collide with `Object.prototype` names are
+   rejected at bundle validation. A syntactically valid drug code this build
+   does not know is preserved, treated as unmodelled, and never rewritten to a
+   known ester.
 
 **Replace all** is not implemented and remains `BLOCKED`: `localStorage` has no
 proven multi-key transaction, so no all-or-nothing claim is made.
 
+## Tools validation and `.hrtb` container
+
+Tools validates the hand-off **envelope**, not clinical record semantics. The
+website importer remains authoritative for per-record validation, merge,
+conflict, tombstone, and preference behavior.
+
+- Bundle input is limited to 15 MiB. The JSON reader rejects duplicate object
+  keys (exact spelling), excessive nesting, oversized strings, and trailing
+  values before typed decoding.
+- `format` must be `oyama-hrt-complete-backup`; `formatVersion` must be the
+  raw numeric token `1`; `createdAt` must be RFC 3339; `mode` must be
+  `transfem` or `transmasc`; both `modes` blocks must be present.
+- Category arrays must contain objects, `deletions` and `preferences` must be
+  objects, calibration enums are checked, and `weight` / `weightUpdatedAt` /
+  `pkParamsUpdatedAt` must be numeric when present.
+- Unknown fields are accepted for forward compatibility. Record contents are
+  opaque to Tools.
+- Envelope struct fields are matched case-insensitively by Go's JSON decoder;
+  a lowercase key and a case variant can both resolve to the same field, with
+  the later member winning. Category keys remain exact lowercase. See BTV-16.
+
+The `.hrtb` container (experimental) is big-endian:
+
+```text
+offset 0   magic "HRTB" (4 bytes)
+offset 4   version 1 (2 bytes)
+offset 6   flags 0, all bits reserved (2 bytes)
+offset 8   payload length, unsigned 64-bit (8 bytes)
+offset 16  one binary OpenPGP message (exactly the declared length)
+```
+
+The container is at most 16 MiB; the payload length must be non-zero and match
+the remaining file exactly. Unknown versions and any non-zero flags are
+rejected. No plaintext fallback exists: `decrypt` and `inspect` require an
+encrypted OpenPGP message with the packet sequence described above.
+
 ## Tools workflow
 
-A Tools implementation can treat the file as opaque JSON:
+The current Tools CLI (`hrt-cold`) supports:
 
-1. Read the website file.
-2. Encrypt it with the user's OpenPGP public key (or decrypt an armored file)
-   entirely offline.
-3. Write the plaintext bundle back for the website import path only after a
-   successful encrypted-message decrypt and integrity check.
+1. `keygen` — write an armored passphrase-locked private key (mode `0600` on
+   Unix) and a public key (mode `0644` on Unix), never overwriting an existing
+   output, and print the primary-key fingerprint.
+2. `encrypt` — validate the website bundle envelope, encrypt to the recipient
+   public key without compression, wrap the binary OpenPGP message in the
+   `.hrtb` container, and publish without replacing an existing target.
+3. `decrypt` — validate the container and outer packet sequence, decrypt,
+   verify the MDC and that the supplied private key actually participated,
+   re-validate the bundle envelope, and only then write the plaintext bytes.
+4. `inspect` — read only the outer container and unauthenticated PKESK
+   advertisements. It applies the same packet-sequence check as `decrypt` but
+   does not decrypt, verify the MDC, or prove the recipient.
+
+Tools writes files atomically with a temp file and hard-link no-replace
+publish, and does not overwrite existing outputs. Windows and Linux behavior
+are exercised by native CI; network filesystems, crash durability, and
+application-level rollback remain outside this interface.
 
 The website does not call Tools, does not launch it, and does not exchange keys
-or passphrases with it.
+or passphrases with it. Tools should hand the decrypted plaintext bundle back
+to the website import path only after a successful encrypted-message decrypt
+and integrity check.

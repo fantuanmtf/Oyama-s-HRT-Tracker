@@ -5,7 +5,7 @@
 
 ## 1. Baseline
 
-- Repo: `/home/haiyan/git/Oyama-s-HRT-Tracker`
+- Repo: `<checkout>`
 - Branch: `agent/backup-schema-audit`
 - HEAD before this work: `bbc5eee11686c3ad60e75f1d92755da08cf623bc`
 - HEAD before Task B (import/merge extraction): `e17c000edc47b974176a7742043c73a4af23f221`
@@ -16,22 +16,22 @@
 
 ## 2. Function inventory
 
-| Function | Source | Current access | Inputs / outputs | Side effects | Directly testable now? | Needed seam |
-|---|---|---|---|---:|---|---|
-| `normalizeSupply` | `src/utils/regimen.ts:643` | exported | `unknown -> Supply \| null` | none | **Yes** | none |
-| `packUnitMG` | `src/utils/regimen.ts:595` | exported | `Pack -> number` | none | **Yes** | none |
-| `packKindsFor` | `src/utils/regimen.ts:609` | exported | `Route -> PackKind[]` | none | **Yes** | none |
-| `defaultPack` | `src/utils/regimen.ts:625` | exported | `PackKind -> Pack` | none | **Yes** | none |
-| `normalizePlanItem` | `src/utils/plan.ts:141` | exported | `unknown -> PlanItem \| null` | none | **Yes** | none |
-| `sanitizeImportedEvents` | `src/hooks/useAppData.ts:709` | **closure** | `unknown -> DoseEvent[]` | none | **No** | export pure helper or hook test |
-| `sanitizeImportedLabResults` | `src/hooks/useAppData.ts:739` | **closure** | `unknown -> LabResult[]` | none | **No** | same |
-| `sanitizeImportedTemplates` | `src/hooks/useAppData.ts:763` | **closure** | `unknown -> DoseTemplate[]` | none | **No** | same |
-| `processImportedData` | `src/hooks/useAppData.ts:794` | hook return | parsed JSON, `{check}` | reads/writes `localStorage`; sets hook state | **No** | pure import engine + `StorageLike` |
-| `mergeImportedData` | `src/hooks/useAppData.ts:1001` | hook return | parsed JSON | reads/writes `localStorage`; sets hook state | **No** | same |
-| `buildExportPayload` | `src/hooks/useAppData.ts:1185` | hook return | none | reads `localStorage` | **No** | `buildExportPayloadFromStorage(owner, mode, storage)` |
-| `applySyncedState` | `src/hooks/useAppData.ts:1230` | hook return | `SyncState` | reads/writes multiple `localStorage` keys; sets state | **No** | `applySyncedStateToStorage(state, owner, storage)` |
-| `loadJSON` | `src/hooks/useAppData.ts:129` | closure | key/fallback | reads `localStorage` | **No** | storage adapter |
-| `keyFor` / `sharedKey` | `src/hooks/useAppData.ts:126-127` | closures | mode/suffix | none | **No** | export key builders or test via hook |
+| Function                     | Source                            | Current access | Inputs / outputs              |                                          Side effects | Directly testable now? | Needed seam                                           |
+| ---------------------------- | --------------------------------- | -------------- | ----------------------------- | ----------------------------------------------------: | ---------------------- | ----------------------------------------------------- |
+| `normalizeSupply`            | `src/utils/regimen.ts:643`        | exported       | `unknown -> Supply \| null`   |                                                  none | **Yes**                | none                                                  |
+| `packUnitMG`                 | `src/utils/regimen.ts:595`        | exported       | `Pack -> number`              |                                                  none | **Yes**                | none                                                  |
+| `packKindsFor`               | `src/utils/regimen.ts:609`        | exported       | `Route -> PackKind[]`         |                                                  none | **Yes**                | none                                                  |
+| `defaultPack`                | `src/utils/regimen.ts:625`        | exported       | `PackKind -> Pack`            |                                                  none | **Yes**                | none                                                  |
+| `normalizePlanItem`          | `src/utils/plan.ts:141`           | exported       | `unknown -> PlanItem \| null` |                                                  none | **Yes**                | none                                                  |
+| `sanitizeImportedEvents`     | `src/hooks/useAppData.ts:709`     | **closure**    | `unknown -> DoseEvent[]`      |                                                  none | **No**                 | export pure helper or hook test                       |
+| `sanitizeImportedLabResults` | `src/hooks/useAppData.ts:739`     | **closure**    | `unknown -> LabResult[]`      |                                                  none | **No**                 | same                                                  |
+| `sanitizeImportedTemplates`  | `src/hooks/useAppData.ts:763`     | **closure**    | `unknown -> DoseTemplate[]`   |                                                  none | **No**                 | same                                                  |
+| `processImportedData`        | `src/hooks/useAppData.ts:794`     | hook return    | parsed JSON, `{check}`        |          reads/writes `localStorage`; sets hook state | **No**                 | pure import engine + `StorageLike`                    |
+| `mergeImportedData`          | `src/hooks/useAppData.ts:1001`    | hook return    | parsed JSON                   |          reads/writes `localStorage`; sets hook state | **No**                 | same                                                  |
+| `buildExportPayload`         | `src/hooks/useAppData.ts:1185`    | hook return    | none                          |                                  reads `localStorage` | **No**                 | `buildExportPayloadFromStorage(owner, mode, storage)` |
+| `applySyncedState`           | `src/hooks/useAppData.ts:1230`    | hook return    | `SyncState`                   | reads/writes multiple `localStorage` keys; sets state | **No**                 | `applySyncedStateToStorage(state, owner, storage)`    |
+| `loadJSON`                   | `src/hooks/useAppData.ts:129`     | closure        | key/fallback                  |                                  reads `localStorage` | **No**                 | storage adapter                                       |
+| `keyFor` / `sharedKey`       | `src/hooks/useAppData.ts:126-127` | closures       | mode/suffix                   |                                                  none | **No**                 | export key builders or test via hook                  |
 
 `normalizeSupply` and `normalizePlanItem` are exported, so they can be tested immediately without modifying production code. The import/export/apply functions are defined inside the `useAppData` hook and depend on React contexts and `localStorage`; they are not importable by a plain Vitest test.
 
@@ -51,14 +51,30 @@ export interface StorageLike {
   removeItem(key: string): void;
 }
 
-export function buildExportPayloadFromStorage(owner: string, mode: Mode, storage: StorageLike): ExportPayload
-export function applySyncedStateToStorage(state: SyncState, owner: string, storage: StorageLike): void
-export function sanitizeImportedEvents(raw: unknown): DoseEvent[]
-export function sanitizeImportedLabResults(raw: unknown): LabResult[]
-export function sanitizeImportedTemplates(raw: unknown): DoseTemplate[]
-export function processImportedDataToStorage(parsed: unknown, context: ImportStorageContext, options?: { check?: boolean; now?: number }): ProcessImportedDataResult
-export function mergeImportedDataToStorage(parsed: unknown, context: ImportStorageContext, options?: { now?: number }): MergeImportedDataResult
-export function reconcileReplacementInStorage(storage: StorageLike, owner: string, mode: ModeKey, kind: RecordKind, before: { id: string }[], after: { id: string }[], now?: number): void
+export function buildExportPayloadFromStorage(owner: string, mode: Mode, storage: StorageLike): ExportPayload;
+export function applySyncedStateToStorage(state: SyncState, owner: string, storage: StorageLike): void;
+export function sanitizeImportedEvents(raw: unknown): DoseEvent[];
+export function sanitizeImportedLabResults(raw: unknown): LabResult[];
+export function sanitizeImportedTemplates(raw: unknown): DoseTemplate[];
+export function processImportedDataToStorage(
+  parsed: unknown,
+  context: ImportStorageContext,
+  options?: { check?: boolean; now?: number },
+): ProcessImportedDataResult;
+export function mergeImportedDataToStorage(
+  parsed: unknown,
+  context: ImportStorageContext,
+  options?: { now?: number },
+): MergeImportedDataResult;
+export function reconcileReplacementInStorage(
+  storage: StorageLike,
+  owner: string,
+  mode: ModeKey,
+  kind: RecordKind,
+  before: { id: string }[],
+  after: { id: string }[],
+  now?: number,
+): void;
 ```
 
 - Move the existing logic without behavior changes.
@@ -83,25 +99,25 @@ export function reconcileReplacementInStorage(storage: StorageLike, owner: strin
 
 ## 4. L2 test matrix
 
-| ID | Target | Case | Expected | Can run now? |
-|---|---|---|---|---|
-| L2-01 | `normalizeSupply` | all six `Pack` branches, valid | accepted, exact branch fields preserved | Yes |
-| L2-02 | `normalizeSupply` | string `pack` / unknown kind / missing field | rejected or explicit migration; no crash | Yes |
-| L2-03 | `normalizeSupply` | vial `ml`/`mgPerMl` or pill/pump/sachet `mg` <= 0/NaN | rejected | Yes |
-| L2-04 | `packUnitMG` / `packKindsFor` / `defaultPack` | each branch and route | correct units/allowed kinds/defaults | Yes |
-| L2-05 | `normalizePlanItem` | `everyDays`/`timesPerDay`/`doseMG` boundaries | valid accepted/normalized; invalid rejected | Yes |
-| L2-06 | `normalizePlanItem` | unknown route/ester, non-object extras | rejected or normalized per current contract | Yes |
-| L2-07 | `sanitizeImportedEvents` | missing id/extras, bad route/time/dose, invalid ester | deterministic ids/defaults/clamping | After seam |
-| L2-08 | `sanitizeImportedLabResults` | bad unit/assay, non-finite, missing fields | unit fallback; invalid records dropped | After seam |
-| L2-09 | `sanitizeImportedTemplates` | bad route/ester/dose/createdAt | deterministic defaults; invalid dropped | After seam |
-| L2-10 | `buildExportPayloadFromStorage` | both modes, tombs, weight, pkParams | exact v2 payload; no local-only fields | After seam |
-| L2-11 | `buildExportPayloadFromStorage` | seeded `auth_token`, `enc_key`, `login_device_passes` | never present in payload | After seam |
-| L2-12 | `applySyncedStateToStorage` | records/tombstones/scalars | writes expected keys only; no local-only keys | After seam |
-| L2-13 | import `processImportedData` | v1/v2, missing fields, empty arrays, unknown fields | current documented behavior, no crash | After seam |
-| L2-14 | import merge/replace | duplicate ids, replacement tombstones | deterministic; no duplicate ids | After seam |
-| L2-15 | restore transaction | failure after some `setItem` calls | no partial user-visible state | **Blocked**: no transaction seam |
-| L2-16 | credential handling | credentials in backup/state | rejected/ignored; never persisted | After seam |
-| L2-17 | version compatibility | unknown critical version/fields | reject or explicit preview; no writes | After seam |
+| ID    | Target                                        | Case                                                  | Expected                                      | Can run now?                     |
+| ----- | --------------------------------------------- | ----------------------------------------------------- | --------------------------------------------- | -------------------------------- |
+| L2-01 | `normalizeSupply`                             | all six `Pack` branches, valid                        | accepted, exact branch fields preserved       | Yes                              |
+| L2-02 | `normalizeSupply`                             | string `pack` / unknown kind / missing field          | rejected or explicit migration; no crash      | Yes                              |
+| L2-03 | `normalizeSupply`                             | vial `ml`/`mgPerMl` or pill/pump/sachet `mg` <= 0/NaN | rejected                                      | Yes                              |
+| L2-04 | `packUnitMG` / `packKindsFor` / `defaultPack` | each branch and route                                 | correct units/allowed kinds/defaults          | Yes                              |
+| L2-05 | `normalizePlanItem`                           | `everyDays`/`timesPerDay`/`doseMG` boundaries         | valid accepted/normalized; invalid rejected   | Yes                              |
+| L2-06 | `normalizePlanItem`                           | unknown route/ester, non-object extras                | rejected or normalized per current contract   | Yes                              |
+| L2-07 | `sanitizeImportedEvents`                      | missing id/extras, bad route/time/dose, invalid ester | deterministic ids/defaults/clamping           | After seam                       |
+| L2-08 | `sanitizeImportedLabResults`                  | bad unit/assay, non-finite, missing fields            | unit fallback; invalid records dropped        | After seam                       |
+| L2-09 | `sanitizeImportedTemplates`                   | bad route/ester/dose/createdAt                        | deterministic defaults; invalid dropped       | After seam                       |
+| L2-10 | `buildExportPayloadFromStorage`               | both modes, tombs, weight, pkParams                   | exact v2 payload; no local-only fields        | After seam                       |
+| L2-11 | `buildExportPayloadFromStorage`               | seeded `auth_token`, `enc_key`, `login_device_passes` | never present in payload                      | After seam                       |
+| L2-12 | `applySyncedStateToStorage`                   | records/tombstones/scalars                            | writes expected keys only; no local-only keys | After seam                       |
+| L2-13 | import `processImportedData`                  | v1/v2, missing fields, empty arrays, unknown fields   | current documented behavior, no crash         | After seam                       |
+| L2-14 | import merge/replace                          | duplicate ids, replacement tombstones                 | deterministic; no duplicate ids               | After seam                       |
+| L2-15 | restore transaction                           | failure after some `setItem` calls                    | no partial user-visible state                 | **Blocked**: no transaction seam |
+| L2-16 | credential handling                           | credentials in backup/state                           | rejected/ignored; never persisted             | After seam                       |
+| L2-17 | version compatibility                         | unknown critical version/fields                       | reject or explicit preview; no writes         | After seam                       |
 
 ## 5. Transaction and all-or-nothing risk
 
@@ -172,12 +188,12 @@ The product decision does **not** prove that every field is already exported, re
 
 ### 9.1 Preference whitelist
 
-| Product category | Production key candidate | Status |
-|---|---|---|
-| `theme` | `app-theme` | CONFIRMED key; cross-device restore NEEDS_DECISION |
-| `language` | `hrt-lang` | CONFIRMED key; cross-device restore NEEDS_DECISION |
-| `display` | candidate `app-show-prediction`, `app-hide-site-label`, `app-pixel-cats`, `app-pixel-cat-style` | `UNKNOWN` category-to-key mapping; NEEDS_DECISION |
-| `reminders` | candidate `hrt-supply-lead-days` | `UNKNOWN` category-to-key mapping; NEEDS_DECISION |
+| Product category | Production key candidate                                                                        | Status                                             |
+| ---------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `theme`          | `app-theme`                                                                                     | CONFIRMED key; cross-device restore NEEDS_DECISION |
+| `language`       | `hrt-lang`                                                                                      | CONFIRMED key; cross-device restore NEEDS_DECISION |
+| `display`        | candidate `app-show-prediction`, `app-hide-site-label`, `app-pixel-cats`, `app-pixel-cat-style` | `UNKNOWN` category-to-key mapping; NEEDS_DECISION  |
+| `reminders`      | candidate `hrt-supply-lead-days`                                                                | `UNKNOWN` category-to-key mapping; NEEDS_DECISION  |
 
 **Never included:** `app-auto-backup` (could re-enable cloud upload), `app-dev-mode`, `site-notice-dismissed`, `app-onboarded`, `auth_token`, `auth_user`, `weak_password`, `login_device_passes`, `enc_key`, TOTP secrets, backup codes, passkeys, session identifiers, private OpenPGP keys, and passphrases.
 
@@ -185,31 +201,31 @@ The `display` and `reminders` rows are product categories, not confirmed localSt
 
 ### 9.2 Conflict rules
 
-| Situation | Required behavior |
-|---|---|
-| Same ID, reliable `updatedAt` exists | Use the timestamp only after documenting the comparison rule |
-| Same ID, no reliable `updatedAt` | Preserve both records if the model can represent them; otherwise keep a pending conflict record. Do not silently choose a winner |
-| Merge adds a new ID | Add and report as `added` |
-| Merge updates an existing ID | Only under an approved conflict policy; report as `updated` |
-| Merge skips a conflict | Report `skipped`; never silently discard |
-| Invalid or duplicate ID in backup | Reject the category before writing; no partial mutation |
-| Corrupt input / failed safety validation | Reject before any data change |
-| Replace | Show target account, mode, categories and counts; require explicit confirmation |
-| Replace failure | Restore the prior state or use a proven atomic commit; otherwise mark `BLOCKED` |
+| Situation                                | Required behavior                                                                                                                |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Same ID, reliable `updatedAt` exists     | Use the timestamp only after documenting the comparison rule                                                                     |
+| Same ID, no reliable `updatedAt`         | Preserve both records if the model can represent them; otherwise keep a pending conflict record. Do not silently choose a winner |
+| Merge adds a new ID                      | Add and report as `added`                                                                                                        |
+| Merge updates an existing ID             | Only under an approved conflict policy; report as `updated`                                                                      |
+| Merge skips a conflict                   | Report `skipped`; never silently discard                                                                                         |
+| Invalid or duplicate ID in backup        | Reject the category before writing; no partial mutation                                                                          |
+| Corrupt input / failed safety validation | Reject before any data change                                                                                                    |
+| Replace                                  | Show target account, mode, categories and counts; require explicit confirmation                                                  |
+| Replace failure                          | Restore the prior state or use a proven atomic commit; otherwise mark `BLOCKED`                                                  |
 
 The current persistence layer has no multi-key transaction. A Replace implementation cannot claim all-or-nothing until a staging/rollback mechanism or atomic storage boundary is proven with tests.
 
 ### 9.3 L2 matrix additions
 
-| ID | Test | Status |
-|---|---|---|
-| L2-18 | Option B category allowlist and exclusion list | NOT_TESTED |
-| L2-19 | Preference category-to-key mapping; `UNKNOWN` categories are not restored | NOT_TESTED |
+| ID    | Test                                                                            | Status     |
+| ----- | ------------------------------------------------------------------------------- | ---------- |
+| L2-18 | Option B category allowlist and exclusion list                                  | NOT_TESTED |
+| L2-19 | Preference category-to-key mapping; `UNKNOWN` categories are not restored       | NOT_TESTED |
 | L2-20 | Same-ID conflict without `updatedAt` preserves both or reports pending conflict | NOT_TESTED |
-| L2-21 | Merge report contains added/updated/skipped/conflict/invalid counts | NOT_TESTED |
-| L2-22 | Replace preview shows account, mode, categories and counts before confirmation | NOT_TESTED |
-| L2-23 | Credentials seeded in storage never appear in payload or restore result | NOT_TESTED |
-| L2-24 | Replace failure leaves prior state unchanged or is marked `BLOCKED` | BLOCKED |
+| L2-21 | Merge report contains added/updated/skipped/conflict/invalid counts             | NOT_TESTED |
+| L2-22 | Replace preview shows account, mode, categories and counts before confirmation  | NOT_TESTED |
+| L2-23 | Credentials seeded in storage never appear in payload or restore result         | NOT_TESTED |
+| L2-24 | Replace failure leaves prior state unchanged or is marked `BLOCKED`             | BLOCKED    |
 
 ## 10. Windows/Linux platform scope
 
@@ -240,13 +256,13 @@ The prototype must not claim Windows file safety from Linux test results.
 
 ### 10.3 Status
 
-| Item | Status |
-|---|---|
-| Linux no-replace prototype | PASS (Phase 1F isolated prototype) |
-| Windows no-replace/ACL behavior | NOT_TESTED |
-| Windows/Linux CI matrix | NOT_TESTED |
-| Cross-platform transaction boundary | BLOCKED |
-| macOS/Android/iOS support | OUT OF SCOPE |
+| Item                                | Status                             |
+| ----------------------------------- | ---------------------------------- |
+| Linux no-replace prototype          | PASS (Phase 1F isolated prototype) |
+| Windows no-replace/ACL behavior     | NOT_TESTED                         |
+| Windows/Linux CI matrix             | NOT_TESTED                         |
+| Cross-platform transaction boundary | BLOCKED                            |
+| macOS/Android/iOS support           | OUT OF SCOPE                       |
 
 ## 11. Updated open decisions
 

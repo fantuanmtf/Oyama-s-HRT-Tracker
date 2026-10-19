@@ -1,5 +1,29 @@
 # Backup Schema Audit — Handoff
 
+## Current state and fast path (2026-10-19)
+
+Use [`AI_WORKFLOW_AND_CONTEXT.md`](AI_WORKFLOW_AND_CONTEXT.md) for the branch
+map, context-budget rules, parallel tracks, test commands, backend smoke plan,
+and handoff template. The sections below are the chronological checkpoint log;
+older entries may name superseded SHAs.
+
+- **Website:** `origin/agent/add-gpg-website` @ `8f2650b`; PR #129 (base
+  `upstream/main` @ `5c5d9fe`) is open and now **ready for review**
+  (`draft=false`), not merged.
+- **Tools:** `origin/Recovery/Tools` @ `7ee628b`; experimental offline OpenPGP
+  CLI.
+- **Audit/Privacy:** both @ `9874c40`; upstream lacks `Privacy/Add-GPG`, so
+  PR #129 carries the audit/L2 commits.
+- **Open:** BTV-3/7, signing/source authentication/anti-replay, Replace
+  all-or-nothing, L3 browser E2E, Tools v6/MDC/recipient verification, and
+  Windows durability; see issues #127 and #128.
+- **Backend/Tools verification:** [`BACKEND_AND_TOOLS_TEST_REPORT.md`](BACKEND_AND_TOOLS_TEST_REPORT.md)
+  records the local Tools checks/CLI recovery loop and the local Worker smoke
+  test at `7ee628b` / `5bfbb6b`; no production, L3, or security-audit claim is
+  made.
+- **Checks for this docs-only update:** `git diff --check`; no build or test
+  suite was run. No production, L3, or "no vulnerabilities" claim is made.
+
 ## Goal and scope
 
 Audit the production data model and export/restore paths to define what a
@@ -18,10 +42,10 @@ Docker, or releases.
 
 ## Commits
 
-| Commit | Purpose |
-|---|---|
-| `4f36e1b` | Map production data model, persistence, export, and sync behavior |
-| `cb4cd10` | Document export/restore coverage gaps and test blind spots |
+| Commit    | Purpose                                                                       |
+| --------- | ----------------------------------------------------------------------------- |
+| `4f36e1b` | Map production data model, persistence, export, and sync behavior             |
+| `cb4cd10` | Document export/restore coverage gaps and test blind spots                    |
 | `f218d99` | Define current-record vs complete-device backup scope and synthetic test plan |
 
 ## Evidence
@@ -226,15 +250,428 @@ change protection rules.
 5. Whether unknown critical fields/versions should reject the import rather than be ignored.
 6. Whether the React hook import wrappers need a separate hook/browser test harness.
 
-## Tools checkpoint (`Recovery/Tools`)
+## Website complete-backup bundle checkpoint (2026-10-19)
 
-- **Branch:** `Recovery/Tools`, created from `agent/backup-schema-audit` @ `9874c40afb89b0e3c9201280ebfe8b1415548eb4`; no website UI commits included.
-- **Interface:** `docs/backup-schema-audit/TOOLS_INTERFACE.md` copied from `agent/add-gpg-website` @ `32edc7068423916f8ab7cfa416ae7bf31d2f7609`.
-- **CLI:** standalone Go module at `tools/hrt-cold/` using gopenpgp `v3.5.2`; commands `keygen`, `encrypt`, `decrypt`, `inspect`.
-- **Container:** experimental Phase 1F-aligned `HRTB` header (magic, u16 version, u16 flags, u64 payload length, binary OpenPGP payload). It is **not stable**.
-- **Safety:** no-overwrite `CreateTemp` + fsync + `os.Link` publish; container/envelope validation; decryption requires a genuinely encrypted OpenPGP message and consumes the body for the integrity check; wrong key/passphrase, unencrypted literal/compressed-plaintext/signed-only, forged PKESK, tamper, truncation, unknown version, oversized input, existing output, and write-failure tests. PKESK recipient IDs are unauthenticated and `inspect` reports them as advertised/unverified only. No physical-erasure claim.
-- **Local Linux checks:** `gofmt` clean; `go vet` PASS; `go test -count=1 -v ./...` PASS (23 top-level tests, 45 subtests); `go test -race` PASS; `go build` PASS; `go mod verify` PASS.
-- **Windows:** native [run `39152774184`](https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39152774184) passed both `ubuntu-latest` and `windows-latest` jobs for head `adb564f30b84376e0d3abd4d1406f6441e868cf0` (`go vet`, `go test -count=1 -v`, `go build`). Directory fsync durability, ACL equivalence, and non-NTFS filesystems remain `NOT_TESTED`.
-- **Push:** `Recovery/Tools` pushed to `origin` as `7b0995a..adb564f`; remote SHA `adb564f30b84376e0d3abd4d1406f6441e868cf0`.
-- **Files:** `tools/hrt-cold/HANDOFF.md` (checkpoint details), `tools/hrt-cold/README.md`, `tools/hrt-cold/THIRD_PARTY_NOTICES.md`, `.github/workflows/tools-hrt-cold.yml`.
-- **Still blocked:** `.hrtb` format stability, License Gate, Docker, production website integration, L3 browser tests, merge, release, and PR. Do not treat this checkpoint as unblocking any of them. The documentation commit after `adb564f` records CI evidence and has its own CI run.
+- **Branch:** `agent/add-gpg-website`, created from the approved audit tip
+  `9874c40` (a descendant of `Privacy/Add-GPG` @ `5c5d9fe`). The audit tip
+  already carries the L2 seams `0918bee` and `fa4c416`, so no cherry-picks or
+  history rewrites were needed.
+- **Implementation commits:**
+  - `0e80021` — `feat: add complete backup bundle data layer`
+  - `b70ac2d` — `feat: wire unencrypted complete backup export and merge import`
+  - `1c45860` — `fix: reject non-positive supply lead days`
+  - `f05d92c` — `fix: preserve bundle tombstones exactly`
+- **Files:**
+  - `src/utils/backupBundle.ts` — versioned envelope, strict validators,
+    export builder, preview/conflict inspector, merge-only import.
+  - `tests/backupBundle.test.ts` — 10 synthetic tests.
+  - `src/hooks/useAppData.ts` — export/preview/apply wrappers; active-mode state
+    install after merge.
+  - `src/App.tsx` — bundle detection in the existing import path, preview
+    dialog, preference application, export download.
+  - `src/components/ExportSection.tsx`, `src/pages/ExportSettings.tsx`,
+    `src/pages/ImportSettings.tsx` — unencrypted labels and Tools guidance.
+  - `src/i18n/translations.ts` — Chinese and English strings; other packs fall
+    back to English.
+  - `docs/backup-schema-audit/TOOLS_INTERFACE.md` — hand-off format and
+    offline Tools boundary.
+- **Envelope:** `format: "oyama-hrt-complete-backup"`, `formatVersion: 1`,
+  `createdAt`, `mode`, `modes`, `weight`/`weightUpdatedAt`,
+  `pkParams`/`pkParamsUpdatedAt`, `calibration`, `preferences`.
+- **Covered data:** per-mode events, labs, templates, deletions, quick doses,
+  supplies, plan; shared weight and PK params; calibration method/history
+  mode; portable preferences.
+- **Supply.pack:** production object union only
+  (`vial|pill|pump|sachet|patch|bulk`). String packs, unknown kinds, and missing
+  branch fields reject the supplies category; no legacy string coercion.
+- **Preference allowlist:** `app-theme`, `hrt-lang`, `app-show-prediction`,
+  `app-hide-site-label`, `hrt-supply-lead-days` only. `app-auto-backup`,
+  `app-dev-mode`, onboarding/site-notice flags, cosmetic settings, and all
+  credentials are excluded by construction.
+- **Import:** parse and validate the entire envelope, show creation time,
+  source mode, per-mode counts, conflicts, invalid records, blocked categories,
+  and ignored preferences, then merge only safe categories. Same id with a
+  reliable newer `updatedAt` updates; older is skipped; same id without a
+  reliable timestamp, equal timestamps with different content, or any same id
+  in quick doses/supplies/plan aborts that category (`C1-A`). Duplicate ids
+  abort the category. Tombstones are unioned and written back exactly (no age
+  pruning at restore); restored records clear their own tombstones.
+- **Replace:** not implemented; explicitly marked `BLOCKED`. No all-or-nothing
+  or rollback claim is made.
+- **Encryption:** none added. No OpenPGP.js/LGPL, no keys, no passphrases, no
+  cold-backup encryption claim. The website file is plaintext JSON; encryption
+  belongs to the offline Tools workflow (`TOOLS_INTERFACE.md`).
+- **Checks actually run:**
+  - `npx tsc --noEmit` — pass.
+  - `node node_modules/vitest/vitest.mjs run` — 18 files passed; 387 tests
+    passed, 4 expected fail (391 total); 26.84s.
+  - `node node_modules/vitest/vitest.mjs run tests/backupBundle.test.ts` — 10/10
+    pass.
+  - `npx prettier --check` on changed source/test files — pass.
+  - `npx eslint src/utils/backupBundle.ts tests/backupBundle.test.ts` — no
+    errors.
+  - `npm run build` — Vite production build pass (chunk-size warning only).
+  - `git diff --check` — pass.
+- **Synthetic coverage:** both-mode round-trip, all six pack branches, string
+  and malformed pack rejection, duplicate ids, invalid records, unknown
+  format/version, empty-vs-missing arrays, same-id conflict abort, newer/older
+  timestamp behavior, preference whitelist, and credential exclusion from both
+  export and import.
+- **Status:** website complete-backup data layer and UI checkpoint `PASS` for
+  the tested surface. This is not production readiness, not a security audit,
+  not OpenPGP/cold-backup encryption, and not a proven restore rollback.
+- **Not proven / remaining:** no browser/L3 end-to-end test for the new rows or
+  dialog; no multi-key transaction; no Replace; no Tools-side OpenPGP command;
+  Windows/Linux browser behavior and platform file handling remain outside this
+  checkpoint.
+- **Push:** pending at the time of this handoff; the final checkpoint records
+  the remote SHA for `origin/agent/add-gpg-website`.
+
+### Open decisions after the website checkpoint
+
+1. Replace/rollback transaction design remains `BLOCKED`.
+2. Whether local-only records should gain `updatedAt`/tombstones.
+3. Whether a future UI should let the user resolve same-id conflicts per
+   category instead of aborting the category.
+4. Tools-side OpenPGP CLI/file behavior and its own test matrix.
+5. Browser/L3 test harness for export, preview, merge, and preference effects.
+
+## Website complete-backup security fixes (2026-10-19)
+
+- **Branch/worktree:** `agent/add-gpg-website` in
+  `/tmp/opencode/hrt-fix-website-p0`; base `32edc7068423916f8ab7cfa416ae7bf31d2f7609`.
+- **Fix commit:** `d4b47a9` — `fix: harden complete-backup merge against unsafe
+tombstones and timestamps`.
+- **Files:** `src/utils/backupBundle.ts`, `src/utils/backupState.ts`,
+  `src/App.tsx`, `src/pages/ImportSettings.tsx`, `src/i18n/translations.ts`,
+  `tests/backupBundle.test.ts`.
+
+### Fixes
+
+- Incoming tombstones are bounded before use: timestamps beyond
+  `now + 5 minutes` are rejected, entries older than the existing 180-day sync
+  TTL are dropped, and each record kind is capped at
+  `TOMBSTONE_MAX_PER_KIND` (5000). Every rejected/expired/capped entry is
+  reported in the preview (`issues`, per-kind `deletionImpact.droppedIds`).
+- An incoming tombstone no longer deletes a local record whose `updatedAt` is
+  newer; the tombstone is skipped and the per-kind conflict is reported.
+  Tombstones for a record category blocked by validation are not applied.
+- A local tombstone newer than (or equal to) an incoming record prevents the
+  record from being restored and is not cleared. A strictly newer incoming
+  record clears the tombstone and both actions are reported.
+- Future `updatedAt`, `weightUpdatedAt`, and `pkParamsUpdatedAt` beyond the
+  5-minute skew allowance are rejected (category/scalar blocked); legitimate
+  older timestamps are preserved.
+- Complete-backup merge now builds all writes first, snapshots every target
+  key, and restores the snapshot if a write throws. If rollback itself fails,
+  the thrown message and UI copy say partial writes may have occurred. The
+  data layer makes no local-storage transaction claim.
+- Entry arrays reuse `MAX_IMPORT_ENTRIES` (20000). `timesPerDay` is finite and
+  bounded to 1..24; `everyDays` is finite and bounded to 1..3650; NaN and
+  Infinity are rejected.
+- Preview text now shows weight, PK parameter keys/values, calibration, and
+  per-kind deletion impact (counts plus ids where available). Calibration
+  overwrite has a separate explicit confirmation dialog. Equal-time scalar
+  values that differ are reported as conflicts and blocked instead of being
+  silently skipped.
+- Import settings copy now distinguishes regular record import (replaces) from
+  complete-backup import (merge only).
+- Credential and excluded-preference handling is unchanged: the allowlist still
+  excludes `auth_token`, `auth_user`, `weak_password`, `login_device_passes`,
+  `enc_key`, `app-auto-backup`, `app-dev-mode`, onboarding/site-notice flags,
+  and cosmetic settings.
+
+### Tests actually run
+
+- `npx tsc --noEmit` — pass.
+- `node node_modules/vitest/vitest.mjs run tests/backupBundle.test.ts` —
+  20/20 pass.
+- `node node_modules/vitest/vitest.mjs run` — 18 files pass; 397 passed,
+  4 expected fail (401 total).
+- `npm run build` — Vite production build pass (existing chunk-size warning
+  only).
+- `npx prettier --check` on changed source/test files — pass.
+- `npx eslint` on changed files — no errors; existing `any` warnings only.
+- `git diff --check` — pass.
+
+New synthetic cases cover: tombstone clock-skew/TTL/cap bounds, newer-local
+record protection, no resurrection from an older bundle, tombstone clearing by
+a newer record, future record/scalar timestamps, mid-write rollback, failed
+rollback partial-state reporting, plan numeric bounds, the 20000-entry cap,
+equal-time weight/PK conflicts, calibration overwrite preview, and preview
+deletion counts/ids.
+
+### Remaining limits
+
+- Rollback is an application-level snapshot/restore, not a `localStorage`
+  transaction. It is proven only for the in-memory `StorageLike` failure cases
+  in tests; quota, browser crash, or a storage that fails every write can still
+  leave partial state, which is why the UI says partial writes may have
+  occurred.
+- The bounds above apply to complete-backup import. The cloud sync merge path
+  (`src/utils/syncMerge.ts`) was not changed in this work item.
+- No browser/L3 end-to-end test, no Replace implementation, no OpenPGP/key/
+  passphrase work, and no schema, database, Worker, Docker, or License changes.
+- This checkpoint does not clear L3, production readiness, the License Gate, or
+  Docker, and it does not claim all-or-nothing restore beyond the tested
+  snapshot rollback.
+- Push status: this handoff update is committed after `d4b47a9`; the final
+  remote SHA is recorded at the checkpoint.
+
+## Website complete-backup confirmation supplements (2026-10-19)
+
+- **Branch/worktree:** `agent/add-gpg-website` in
+  `/tmp/opencode/hrt-fix-website-p0`; base `82381f9b1f7db3fd866ee21d563ca6e3b64a274d`.
+- **Code + tests commit:** `23637e4` — account and plaintext confirmations.
+- **Files:**
+  - `src/utils/backupWarnings.ts` — pure account-target and plaintext-warning
+    copy helpers; no bundle fields.
+  - `src/App.tsx` — preview names the current target account, warns that the
+    format has no source-account identifier, makes the merge confirmation a
+    danger confirm, and gates the complete-backup download behind an explicit
+    plaintext-health-data confirmation.
+  - `src/i18n/translations.ts` — Chinese and English copy for both
+    confirmations; other packs fall back as before.
+  - `tests/backupWarnings.test.ts` — five synthetic copy/account-target tests
+    using the shipped English and Chinese strings.
+  - `tests/backupBundle.test.ts` — one invariant test: no source-account field
+    is added and `formatVersion` stays `1`.
+  - `docs/backup-schema-audit/BACKUP_TEST_VECTORS.md` — website/Tools acceptance
+    boundary vectors and authority/status.
+- **Account warning:** uses the existing `useAuth()` user; shows the username
+  when signed in or `this device (not signed in)` otherwise. It states that the
+  bundle format records no source account, so a cross-account merge cannot be
+  detected. No account ID was added to the envelope and `formatVersion` was not
+  changed.
+- **Plaintext export:** the download now requires a confirm whose copy says the
+  bundle is unencrypted plaintext health data, recommends the offline Tools CLI
+  (`hrt-cold encrypt`), and states that the website does not encrypt the file.
+  Encrypted JSON, regular JSON, clipboard, CSV and PDF export paths are
+  unchanged.
+- **Parity document:** BTV-1 calibration `average`/`adaptive` (website
+  authoritative), BTV-2 `createdAt` date-only vs RFC 3339 (Tools authoritative),
+  BTV-3 `formatVersion: 1.0` (UNRESOLVED), BTV-4 duplicate JSON keys (Tools
+  authoritative), BTV-5 `weight: null` and BTV-6 `weightUpdatedAt: 0` (website
+  authoritative), BTV-7 unknown per-record fields (UNRESOLVED), and BTV-8
+  tombstone TTL/skew/cap (website authoritative).
+- **Checks actually run:**
+  - `npx tsc --noEmit` — pass (no output).
+  - Focused backup tests (`backupWarnings`, `backupBundle`) — 2 files passed;
+    26 tests passed.
+  - Full Vitest run — 19 files passed; 403 passed, 4 expected fail (407 total);
+    14.33s.
+  - `npx prettier --check` on all changed source/test/doc files — pass.
+  - `npx eslint` on changed TS/TSX files — 0 errors; 1 pre-existing
+    `@typescript-eslint/no-explicit-any` warning in `src/App.tsx`.
+  - `npm run build` — Vite production build pass; existing large-chunk warning
+    only.
+  - `git diff --check` — pass.
+- **Not changed / not claimed:** no Tools/CLI change, no OpenPGP/key/passphrase
+  work, no new runtime dependency, no schema or `formatVersion` change, no
+  Replace, signing, key management, L3, production restore rollback, browser
+  end-to-end test, License Gate, Docker, or production approval.
+- **Unresolved:** BTV-3 (`formatVersion: 1.0`) and BTV-7 (unknown per-record
+  fields) remain product/interface decisions. A future source-account field is
+  out of scope. Cross-account detection is impossible with the current format.
+- **Push:** pending at the time of this handoff; the final checkpoint records
+  the remote SHA for `origin/agent/add-gpg-website`.
+
+### Final push checkpoint
+
+- Code + docs commit `6aa8f3c098e0ba3808d049f46ed63fb4e0d4ba8f` was pushed
+  non-force to `origin/agent/add-gpg-website` (`82381f9..6aa8f3c` fast-forward).
+- `git ls-remote origin refs/heads/agent/add-gpg-website` returned the same SHA,
+  and the worktree was clean before this docs-only note.
+- This note is a follow-up commit on the same branch; no other ref, main,
+  upstream, Tools checkout, PR, merge, or release was changed.
+
+## Website complete-backup review fixes (2026-10-19)
+
+- **Branch/worktree:** `agent/add-gpg-website` in
+  `/tmp/opencode/hrt-fix-website-p1`; base `48ae09f9b49db7848916b1b33de303a36006971e`.
+- **Tools reference:** `Recovery/Tools` @ `38c80fc` was read only through git
+  objects; no Tools checkout, branch, or file was changed.
+- **Code + tests commit:** `250eeefb4b03aa8705be29244f98c3d81623d186` —
+  `fix: harden complete-backup export and merge semantics`.
+- **Files:** `src/utils/backupBundle.ts`, `src/App.tsx`,
+  `src/hooks/useAppData.ts`, `src/i18n/translations.ts`,
+  `tests/backupBundle.test.ts`.
+
+### Fixes
+
+- **P1-1 expired local tombstone:** `reconcileBundle` prunes the local tombstone
+  map with `pruneTombstones(..., now)` before `planCategoryMerge`. An expired
+  local deletion no longer hides an older incoming record. Regression test:
+  a 181-day-old local tombstone plus a 182-day-old incoming record restores the
+  record.
+- **P1-2 prototype ids:** record validation rejects `__proto__`, `constructor`,
+  and `prototype`; tombstone validation already did. Local tombstone maps are
+  re-copied into null-prototype objects, accepted/candidate maps use
+  null-prototype storage, and every lookup uses `Object.hasOwn` (record
+  indexes remain `Map`). Regression tests cover rejected record/tombstone ids
+  and an unrelated `toString` record not being hidden by a local `constructor`
+  key.
+- **P1-3 export/importer parity:** export now shares `MAX_IMPORT_ENTRIES`
+  (refuses above the limit), collapses duplicate ids to the newest copy (last
+  copy without stamps) with a report, drops invalid records with a report, and
+  reports dropped tombstone/stamp entries. A new
+  `CompleteBackupExportReport`/`CompleteBackupExportError` surface carries the
+  issues to the UI. One `isDrugCode` rule now governs events, templates, quick
+  doses, supplies, and plan, so a cross-version `FUTURE1` ester round-trips in
+  every category. Tests cover duplicates, >20,000 entries, invalid records, and
+  the cross-version ester.
+- **P1-4 clock-skew asymmetry:** export validators receive the same clock and
+  future-stamp bound as import. Future records are dropped/reported, and future
+  weight/PK stamps are omitted/reported. Tests cover each stamp and future
+  tombstones.
+- **P2-1 stale confirmation closure:** `AppContent` keeps a latest
+  preview/apply/build snapshot in `completeBackupRef`. Every confirm path
+  re-previews, compares a stable `completeBackupPreviewFingerprint`, re-opens
+  the preview if counts/conflicts/scalars changed, and applies through the
+  latest hook closure. The calibration gate and plaintext export confirmation
+  use the same latest snapshot; export builds at confirm time.
+- **P2-2 preferences-only:** a new pure `classifyCompleteBackupOutcome` returns
+  `applied`, `settings-only`, or `nothing`. The UI applies returned preferences
+  even when `applied` is empty and shows a settings-only result; tests cover the
+  data-layer result.
+- **P2-3 `applied`/`writeNeeded`:** `planDeletions` sets `writeNeeded` only when
+  an accepted incoming tombstone survives, and a category blocked during
+  reconciliation removes its accepted tombstones and recomputes the flag.
+  `classifyCompleteBackupOutcome` reports `nothing` when every category is
+  blocked, so the UI no longer claims success. Tests assert no `applied`
+  entries, `nothing`, and zero storage writes for an all-blocked bundle.
+- **P3 UI/report polish:** deletion-impact id lists use `formatIds` (five ids
+  plus `+N more`); duplicate-id issues use the same helper. Same-bundle
+  record+tombstone contradictions are reported with the winning side. The
+  `let parsed: any` warning in `App.tsx` is now `unknown`; ESLint reports no
+  `no-explicit-any` warning for the changed files.
+
+### Tests actually run
+
+- `npx tsc --noEmit` — pass.
+- Focused backup suite — 1 file, 33/33 tests pass.
+- Full Vitest — 19 files pass; 415 passed, 4 expected fail (419 total).
+- `npm run build` — Vite production build pass (existing chunk-size warning
+  only).
+- `npx prettier --check` on changed source/test/doc files — pass.
+- `npx eslint` on `src/App.tsx`, `src/utils/backupBundle.ts`,
+  `tests/backupBundle.test.ts` — no errors or warnings. A broader run including
+  `src/hooks/useAppData.ts` still shows the pre-existing hook warnings and two
+  pre-existing `any` warnings outside this change.
+- `git diff --check` — pass.
+
+### P2-1 verification limit
+
+The dialog-closure behavior has no browser/React test in this work item.
+Exact blocker: `vitest.config.ts` uses `environment: 'node'` and includes only
+`tests/**/*.test.ts`; there is no jsdom/happy-dom or React Testing Library
+dependency; `AppContent` is not exported and requires the Dialog, Auth,
+Language, HRT-mode, and PixelCat providers plus `localStorage`. The data-layer
+mechanism used by the fix (re-preview against changed active arrays and compare
+`completeBackupPreviewFingerprint`) is tested. The wiring inside `AppContent`
+is reviewed but not rendered in a test, so this handoff does not claim a
+browser-level regression test for P2-1.
+
+### Remaining limits / not changed
+
+- No L3/browser E2E, Replace, rollback transaction, signing, key management,
+  DB/Worker/Docker/License work, Tools branch change, PR, merge, or release.
+- Website import still uses `JSON.parse`, so duplicate JSON keys remain
+  last-wins (BTV-4); case-variant keys are not normalized (BTV-16).
+- Export and import are symmetric per device, but clocks more than five minutes
+  apart can still reject an otherwise valid bundle (BTV-13).
+- BTV-3 (`formatVersion: 1.0`) and BTV-7 (unknown per-record fields) remain
+  unresolved product/interface decisions.
+- The multi-key snapshot rollback remains application-level, not a
+  `localStorage` transaction.
+- Push status: pending at the time of this handoff; the final checkpoint records
+  the remote SHA for `origin/agent/add-gpg-website`.
+
+### Review push checkpoint
+
+- `250eeef..01275fc` was pushed non-force to
+  `origin/agent/add-gpg-website` (fast-forward).
+- `git ls-remote origin refs/heads/agent/add-gpg-website` returned
+  `01275fc16b9d73ea7316776f886a57505debe49e`.
+- This note is a docs-only follow-up commit on the same branch; no other ref,
+  main, upstream, Tools checkout, PR, merge, or release was changed.
+
+## Website review fixes: tombstone persistence, ids, account fingerprint, plan loader (2026-10-19)
+
+- **Branch/worktree:** `agent/add-gpg-website-review` in
+  `/tmp/opencode/hrt-website-review2`; base
+  `fbe63cf27d9ba3300efa1abb2267b7a47151e504`, verified with `git ls-remote`
+  before the worktree was created. The previous branch worktree was left
+  untouched.
+- **Tools reference:** `Recovery/Tools` @
+  `7ee628b6455dee31ca044e453dff31e6d17a7e56`, read only through git objects.
+  No Tools branch, worktree, or file was changed.
+- **Code + tests commit:** `0d813d4` —
+  `fix: persist pruned tombstones and harden backup ids`.
+- **Follow-up coverage commit:** `4e1a32f` —
+  `test: cover inherited tombstone names for both ids`. It proves both
+  `toString` and `valueOf` survive an empty tombstone map in a sync merge,
+  while an explicit `valueOf` tombstone still deletes that record.
+- **Follow-up fallback commit:** `2880bb5` —
+  `fix: prune tombstones when bundle omits deletions`. A bundle without a
+  `deletions` block skips `planDeletions`, so reconciliation now prunes and
+  persists the local map directly in that case.
+- **Files:** `logic.ts`, `src/utils/backupBundle.ts`, `src/utils/plan.ts`,
+  `src/utils/syncMerge.ts`, `tests/backupBundle.test.ts`,
+  `tests/backupState.test.ts`, `docs/backup-schema-audit/*`.
+
+### Fixes
+
+- **P1-A expired local tombstones:** `planDeletions` now sets `writeNeeded`
+  when it drops a local entry outside the TTL/cap bounds or when the pruned
+  local map differs from the stored one. The pruned map is written in the same
+  merge. The regression test imports an older record over an expired local
+  tombstone, then feeds the stored tombstones to `mergeSyncStates` and checks
+  that the restored record is not deleted again.
+- **P1-B prototype names:** bundle validation rejects every own property name
+  of `Object.prototype` (`toString`, `valueOf`, `hasOwnProperty`,
+  `__proto__`, `constructor`, and the rest) plus `prototype`. `syncMerge`
+  tombstone maps are null-prototype objects and every tombstone/id lookup uses
+  `Object.hasOwn`; `mergeTombstoneMaps` no longer uses `in`. Tests cover
+  `toString`/`valueOf` rejection through import and an inherited
+  `toString` value not acting as a deletion during sync.
+- **P2-C account fingerprint:** `CompleteBackupPreview` carries `targetOwner`,
+  and `completeBackupPreviewFingerprint` includes it. Re-previewing the same
+  file against a different owner changes the fingerprint, so the existing
+  confirm-time comparison forces a new preview instead of applying stale
+  consent to another account. A data-layer test compares two owners.
+- **Plan loader compatibility:** `isDrugCode` is now shared by logic, the
+  bundle validators, and `normalizePlanItem`. A syntactically valid unknown
+  code (for example `FUTURE1`) is preserved by the plan loader instead of
+  dropping the row. `hormoneOf` classifies it as unmodelled (`other`), so it
+  contributes no simulated curve, and it is never rewritten to E2. Tests
+  cover the bundle round-trip, loader, and unmodelled simulation result.
+
+### Checks actually run
+
+- `node node_modules/typescript/bin/tsc --noEmit` — pass.
+- Focused `backupBundle` + `backupState` — 2 files, 43/43 pass.
+- Full Vitest — 19 files pass; 417 passed, 4 expected fail (421 total). One
+  unrelated calibration test timed out while the production build ran in
+  parallel; it passed isolated (71/71) and the final standalone full run
+  passed.
+- `node node_modules/vite/bin/vite.js build` — Vite production build pass
+  (existing large-chunk warning only).
+- `prettier --write` on changed source/test/doc files — clean.
+- `eslint` on changed TS/TSX files — 0 errors; existing warnings only.
+- `git diff --check` — pass.
+
+### Status and limits
+
+- These fixes are website-side only. No L3/browser E2E, Replace, signing, key
+  management, production restore rollback, schema/DB/Worker/Docker/License
+  change, or real data/secret was added.
+- BTV-3 (`formatVersion: 1.0`) and BTV-7 (unknown per-record fields) remain
+  unresolved product/interface decisions.
+- Replace remains `BLOCKED`; multi-key rollback is still application-level,
+  not a `localStorage` transaction.
+- The website importer remains the record-semantics authority; Tools validates
+  only the envelope/container.
+- **Push:** the code commit and this documentation checkpoint are pushed
+  non-force to `origin/agent/add-gpg-website`; the final remote SHA is recorded
+  in the task result.
