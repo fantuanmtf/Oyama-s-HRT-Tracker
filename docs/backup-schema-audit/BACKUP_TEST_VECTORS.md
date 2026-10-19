@@ -108,7 +108,9 @@ should carry an account identifier is **UNRESOLVED** and out of scope here.
   bundles, writes one recovery journal before touching records, rolls back on a
   failed write, and replays or finishes the journal at the next app start.
   `e2e/replace.spec.ts` covers success, refusal, rollback, and both recovery
-  phases. This is an application-level transaction over localStorage, not a
+  phases. The journal needs free localStorage headroom for the target data;
+  if it cannot be written, Replace aborts before touching records. This is an
+  application-level transaction over localStorage, not a
   browser primitive; no production-restore claim is made.
 - No claim is made about production readiness, OpenPGP key handling, License
   Gate approval, or Docker.
