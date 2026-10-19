@@ -1719,6 +1719,19 @@ const reconcileBundle = (parsed: ParsedBundle, context: CompleteBackupContext, n
             conflicts.push(...deletionPlan.conflicts);
             deletionImpact.push(...deletionPlan.impacts);
             removed += deletionPlan.impacts.reduce((total, impact) => total + impact.removedLocal, 0);
+        } else {
+            // The bundle may omit `deletions` entirely. There is nothing to
+            // import, but an expired local map still has to stop existing:
+            // otherwise it survives this merge and deletes a restored record
+            // on the next sync.
+            const prunedLocal = pruneTombstones(localTombstonesBefore, now);
+            const localChanged = RECORD_KINDS.some(
+                kind => !sameTombstoneMap(prunedLocal[kind], localTombstonesBefore[kind]),
+            );
+            if (localChanged) {
+                tombstones = prunedLocal;
+                writeTombstones = true;
+            }
         }
         const acceptedTombstonesRemain = (): boolean =>
             RECORD_KINDS.some(kind => {

@@ -846,6 +846,27 @@ describe('complete backup bundle data layer', () => {
         const synced = mergeSyncStates(localState, emptySyncState());
         expect(synced.merged.modes.transfem.events.map(item => item.id)).toContain('revived');
         expect(synced.stats.removed).toBe(0);
+
+        // A bundle that omits the deletions block skips planDeletions, but the
+        // expired local map must still be pruned and persisted.
+        const omittedLocal = new MemoryStorage();
+        omittedLocal.setItem(key('transfem', 'events'), JSON.stringify([]));
+        omittedLocal.setItem(
+            key('transfem', 'deletions'),
+            JSON.stringify({ events: { revived: tombstoneAt }, labResults: {}, doseTemplates: {} }),
+        );
+        const omitted = build(seed());
+        omitted.modes.transfem.events = [event('revived', { updatedAt: tombstoneAt - 1_000 })];
+        omitted.modes.transfem.labResults = [];
+        omitted.modes.transfem.doseTemplates = [];
+        delete omitted.modes.transfem.deletions;
+
+        const omittedResult = mergeCompleteBackupBundleToStorage(omitted, context(omittedLocal));
+        expect(omittedResult.applied).toContain('transfem.deletions');
+        expect(
+            JSON.parse(omittedLocal.getItem(key('transfem', 'events'))!).map((item: { id: string }) => item.id),
+        ).toContain('revived');
+        expect(JSON.parse(omittedLocal.getItem(key('transfem', 'deletions'))!).events).toEqual({});
     });
 
     it('rejects prototype-named record and tombstone ids instead of inheriting a value', () => {
