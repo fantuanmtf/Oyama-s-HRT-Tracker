@@ -9,13 +9,13 @@ Windows durability, License Gate clearance, or the absence of vulnerabilities.
 
 ## 1. Branch and PR map
 
-| Ref                                  | SHA                                        | Meaning                                                                 |
-| ------------------------------------ | ------------------------------------------ | ----------------------------------------------------------------------- |
-| `origin/agent/add-gpg-website`       | `8f2650b74e62d3c9177b723c9ef079fc820f8a31` | Website complete-backup data/UI; PR #129 head                           |
-| `origin/Recovery/Tools`              | `7ee628b6455dee31ca044e453dff31e6d17a7e56` | Offline `hrt-cold` OpenPGP CLI; experimental, not merged                |
-| `origin/Privacy/Add-GPG`             | `9874c40afb89b0e3c9201280ebfe8b1415548eb4` | Product branch for the GPG/backup line                                  |
-| `origin/agent/backup-schema-audit`   | `9874c40afb89b0e3c9201280ebfe8b1415548eb4` | Audit/L2 test-seam tip; same commit as `Privacy/Add-GPG`                 |
-| `upstream/main`                      | `5c5d9fe39945c3f03c740bbaf76f313be20f7dbe` | Base of PR #129                                                         |
+| Ref                                | SHA                                        | Meaning                                                  |
+| ---------------------------------- | ------------------------------------------ | -------------------------------------------------------- |
+| `origin/agent/add-gpg-website`     | `8f2650b74e62d3c9177b723c9ef079fc820f8a31` | Website complete-backup data/UI; PR #129 head            |
+| `origin/Recovery/Tools`            | `7ee628b6455dee31ca044e453dff31e6d17a7e56` | Offline `hrt-cold` OpenPGP CLI; experimental, not merged |
+| `origin/Privacy/Add-GPG`           | `9874c40afb89b0e3c9201280ebfe8b1415548eb4` | Product branch for the GPG/backup line                   |
+| `origin/agent/backup-schema-audit` | `9874c40afb89b0e3c9201280ebfe8b1415548eb4` | Audit/L2 test-seam tip; same commit as `Privacy/Add-GPG` |
+| `upstream/main`                    | `5c5d9fe39945c3f03c740bbaf76f313be20f7dbe` | Base of PR #129                                          |
 
 The website and Tools branches both descend from the audit tip `9874c40`.
 `Privacy/Add-GPG` is absent from `upstream`; it exists on `origin` (the fork).
@@ -23,11 +23,11 @@ For that reason PR #129 targets `upstream/main` and includes the audit/L2
 commits plus the website commits. Do not rebase the website branch onto
 `5c5d9fe`; that would drop dependencies.
 
-| Item | State at snapshot |
-| --- | --- |
+| Item                                                                            | State at snapshot                                                                                                           |
+| ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
 | PR #129, "feat: complete device backup export/import with verification preview" | Open, base `main`, **draft status now ready** (`draft=false`); head `8f2650b`; 41 commits, 36 files; not approved or merged |
-| Issue #127, "Complete device backup: remaining hardening and integration work" | Open |
-| Issue #128, "Create Recovery/Tools branch for offline cold-backup CLI" | Open; the branch exists at `7ee628b`, so reconcile and close only with evidence |
+| Issue #127, "Complete device backup: remaining hardening and integration work"  | Open                                                                                                                        |
+| Issue #128, "Create Recovery/Tools branch for offline cold-backup CLI"          | Open; the branch exists at `7ee628b`, so reconcile and close only with evidence                                             |
 
 Use GitHub for current CI/review state. The SHAs above are the durable anchors
 for this handoff.
@@ -123,24 +123,24 @@ Follow these rules even when the full history is available.
 
 ### Source map
 
-| Track | Start with these files |
-| --- | --- |
-| Website bundle/import | `src/utils/backupBundle.ts`, `backupState.ts`, `backupImport.ts`, `backupWarnings.ts`; `src/hooks/useAppData.ts`, `src/App.tsx`; `tests/backupBundle.test.ts`, `tests/backupState.test.ts`, `tests/backupImport.test.ts` |
-| Website UI | `src/pages/ImportSettings.tsx`, `src/pages/ExportSettings.tsx`, `src/components/ExportSection.tsx`, `src/i18n/translations.ts` |
-| Tools CLI | `tools/hrt-cold/README.md`, `bundle.go`, `container.go`, `pgp.go`, `atomicfile.go`, matching `*_test.go` |
-| Backend smoke | `worker.ts`, `wrangler.toml`, `tests/workerHardening.test.ts` |
-| Contract decisions | `TOOLS_INTERFACE.md`, `BACKUP_TEST_VECTORS.md` |
-| Restore/replace design | `RESTORE_SEMANTICS.md`, `L2_TEST_SEAM_DESIGN.md`, `SYNTHETIC_RESTORE_HARNESS.md` |
+| Track                  | Start with these files                                                                                                                                                                                                   |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Website bundle/import  | `src/utils/backupBundle.ts`, `backupState.ts`, `backupImport.ts`, `backupWarnings.ts`; `src/hooks/useAppData.ts`, `src/App.tsx`; `tests/backupBundle.test.ts`, `tests/backupState.test.ts`, `tests/backupImport.test.ts` |
+| Website UI             | `src/pages/ImportSettings.tsx`, `src/pages/ExportSettings.tsx`, `src/components/ExportSection.tsx`, `src/i18n/translations.ts`                                                                                           |
+| Tools CLI              | `tools/hrt-cold/README.md`, `bundle.go`, `container.go`, `pgp.go`, `atomicfile.go`, matching `*_test.go`                                                                                                                 |
+| Backend smoke          | `worker.ts`, `wrangler.toml`, `tests/workerHardening.test.ts`                                                                                                                                                            |
+| Contract decisions     | `TOOLS_INTERFACE.md`, `BACKUP_TEST_VECTORS.md`                                                                                                                                                                           |
+| Restore/replace design | `RESTORE_SEMANTICS.md`, `L2_TEST_SEAM_DESIGN.md`, `SYNTHETIC_RESTORE_HARNESS.md`                                                                                                                                         |
 
 ## 4. Scheduling and parallel tracks
 
-| Track | Work | Can run | Dependencies and exit gate |
-| --- | --- | --- | --- |
-| **A. Website contract/UI** | Bundle validation, preview/merge, confirmation, UI copy | Now, from `8f2650b` or a reviewed successor | Depends on BTV-3/7 and `TOOLS_INTERFACE.md`. Gate: website checks pass, review comments resolved, contract decisions recorded. |
-| **B. Tools CLI/API** | `hrt-cold` behavior, `.hrtb`, envelope/container checks | Now, from `7ee628b` | Depends on the same envelope contract. Gate: Go checks pass; no `.hrtb` stability or production-integration claim until decisions and review. |
-| **C. Security hardening/signing** | Threat model, signing, source auth, anti-replay, key lifecycle | C1 input hardening now; C2 signing after A/B contract freeze | Depends on A/B interface and an approved threat model. Gate: test vectors, key lifecycle, and review; no "authenticated" claim without them. |
-| **D. Backend smoke/security** | Local Worker smoke, auth boundaries, headers/CORS, error handling | Now, in parallel | Local D1 only. Gate: evidence recorded, `NOT_TESTED` list explicit, no production binding or deployment. |
-| **E. L3 integration** | Browser E2E for export, preview, confirm, merge, preferences | After A and D baseline; B if encrypted handoff is in scope | Needs a browser harness (not present in the Node-only Vitest config). Gate: pinned SHAs and synthetic browser evidence; still not production approval. |
+| Track                             | Work                                                              | Can run                                                      | Dependencies and exit gate                                                                                                                             |
+| --------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **A. Website contract/UI**        | Bundle validation, preview/merge, confirmation, UI copy           | Now, from `8f2650b` or a reviewed successor                  | Depends on BTV-3/7 and `TOOLS_INTERFACE.md`. Gate: website checks pass, review comments resolved, contract decisions recorded.                         |
+| **B. Tools CLI/API**              | `hrt-cold` behavior, `.hrtb`, envelope/container checks           | Now, from `7ee628b`                                          | Depends on the same envelope contract. Gate: Go checks pass; no `.hrtb` stability or production-integration claim until decisions and review.          |
+| **C. Security hardening/signing** | Threat model, signing, source auth, anti-replay, key lifecycle    | C1 input hardening now; C2 signing after A/B contract freeze | Depends on A/B interface and an approved threat model. Gate: test vectors, key lifecycle, and review; no "authenticated" claim without them.           |
+| **D. Backend smoke/security**     | Local Worker smoke, auth boundaries, headers/CORS, error handling | Now, in parallel                                             | Local D1 only. Gate: evidence recorded, `NOT_TESTED` list explicit, no production binding or deployment.                                               |
+| **E. L3 integration**             | Browser E2E for export, preview, confirm, merge, preferences      | After A and D baseline; B if encrypted handoff is in scope   | Needs a browser harness (not present in the Node-only Vitest config). Gate: pinned SHAs and synthetic browser evidence; still not production approval. |
 
 Suggested waves:
 
@@ -209,13 +209,13 @@ or any production D1/R2/Worker command.
 
 ### Check selection
 
-| Change | Minimum evidence |
-| --- | --- |
-| Docs only | `git diff --check`; state that no build/tests were run |
-| Website bundle/UI | `tsc`, focused tests, full Vitest, build, Prettier/ESLint on changed files |
-| Tools | `go test`, race, vet, build, `go mod verify`, plus native-platform CI if claiming Windows |
-| Backend | Local smoke evidence plus `NOT_TESTED` limits; no production claim |
-| L3 | Browser E2E with synthetic data and pinned SHAs; otherwise `NOT_TESTED`/`BLOCKED` |
+| Change            | Minimum evidence                                                                          |
+| ----------------- | ----------------------------------------------------------------------------------------- |
+| Docs only         | `git diff --check`; state that no build/tests were run                                    |
+| Website bundle/UI | `tsc`, focused tests, full Vitest, build, Prettier/ESLint on changed files                |
+| Tools             | `go test`, race, vet, build, `go mod verify`, plus native-platform CI if claiming Windows |
+| Backend           | Local smoke evidence plus `NOT_TESTED` limits; no production claim                        |
+| L3                | Browser E2E with synthetic data and pinned SHAs; otherwise `NOT_TESTED`/`BLOCKED`         |
 
 ## 6. Backend testing plan and limits
 
@@ -225,18 +225,18 @@ Use a fresh local D1 database and synthetic accounts/data. Keep the local server
 bound to loopback and record status, headers, and the narrow response body for
 each check.
 
-| ID | Check | Expected evidence |
-| --- | --- | --- |
-| B-01 | Local migrations and Worker start | Local D1 migration succeeds; `wrangler dev --local` starts without touching remote bindings |
-| B-02 | `GET /api/transparency` | 200 JSON aggregate; documented fields; no PII, tokens, or per-user records |
-| B-03 | Response headers | `Content-Type: application/json`, `Cache-Control: public, max-age=15` (aggregate + anonymized data; intentional public cache — decision 2026-10-19), security headers present, CORS origin/method/header values match the Worker |
-| B-04 | CORS preflight | `OPTIONS` succeeds with the allowed methods/headers; record the exact response |
-| B-05 | Authentication boundary | Missing, malformed, expired, and revoked tokens fail closed; session-level 401 includes `X-Session-Invalid: 1` where expected |
-| B-06 | Authorization boundary | A normal synthetic user cannot use admin routes or read another user's content/share; record status only, never data |
-| B-07 | Error handling | Malformed JSON, bad methods, unknown routes, and invalid IDs return expected 4xx; no stack traces, SQL, secrets, or cross-user data |
-| B-08 | Input limits | Truncated/oversized bodies fail without 500 or partial writes; limits are recorded as observed |
-| B-09 | Rate limiting | A small local burst returns 429 with `Retry-After` when the local binding is active; do not run a load/DoS test |
-| B-10 | Cleanup | Stop the local server and confirm no remote resources, committed secrets, or production data were created |
+| ID   | Check                             | Expected evidence                                                                                                                        |
+| ---- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| B-01 | Local migrations and Worker start | Local D1 migration succeeds; `wrangler dev --local` starts without touching remote bindings                                              |
+| B-02 | `GET /api/transparency`           | 200 JSON aggregate; documented fields; no PII, tokens, or per-user records                                                               |
+| B-03 | Response headers                  | `Content-Type: application/json`, `Cache-Control: no-store`, security headers present, CORS origin/method/header values match the Worker |
+| B-04 | CORS preflight                    | `OPTIONS` succeeds with the allowed methods/headers; record the exact response                                                           |
+| B-05 | Authentication boundary           | Missing, malformed, expired, and revoked tokens fail closed; session-level 401 includes `X-Session-Invalid: 1` where expected            |
+| B-06 | Authorization boundary            | A normal synthetic user cannot use admin routes or read another user's content/share; record status only, never data                     |
+| B-07 | Error handling                    | Malformed JSON, bad methods, unknown routes, and invalid IDs return expected 4xx; no stack traces, SQL, secrets, or cross-user data      |
+| B-08 | Input limits                      | Truncated/oversized bodies fail without 500 or partial writes; limits are recorded as observed                                           |
+| B-09 | Rate limiting                     | A small local burst returns 429 with `Retry-After` when the local binding is active; do not run a load/DoS test                          |
+| B-10 | Cleanup                           | Stop the local server and confirm no remote resources, committed secrets, or production data were created                                |
 
 `NOT_TESTED` must be written explicitly for anything not exercised, including
 passkey/WebAuthn browser flows, R2, scheduled jobs, production rate limits,
@@ -278,16 +278,16 @@ record `git diff --check` separately from test evidence.
 
 ## 8. Open decisions and next priorities
 
-| Open decision | Blocks | Current state |
-| --- | --- | --- |
-| BTV-3: accept JSON `1.0` or require the exact integer token `1` | Stable bundle/interface | Unresolved |
-| BTV-7: preserve, reject, or report unknown per-record fields | Stable bundle/interface | Unresolved |
-| Source-account identity and cross-account detection | Import safety UX/contract | No account field; target-account warning only |
-| Replace transaction/rollback design | Replace feature | `BLOCKED`; application snapshot is not a transaction |
-| Signing, source authentication, anti-replay | Trust model | Not implemented |
-| Tools OpenPGP v6, MDC/recipient verification, `.hrtb` stability | Tools release/interface | Unproven; MDC relies on the library, `inspect` does not verify recipients |
-| Windows durability/ACL/SMB behavior | Platform support claim | `NOT_TESTED`; native CI is evidence, not proof |
-| Production/License Gate/Docker approval | Release/deployment | `BLOCKED` |
+| Open decision                                                   | Blocks                    | Current state                                                             |
+| --------------------------------------------------------------- | ------------------------- | ------------------------------------------------------------------------- |
+| BTV-3: accept JSON `1.0` or require the exact integer token `1` | Stable bundle/interface   | Unresolved                                                                |
+| BTV-7: preserve, reject, or report unknown per-record fields    | Stable bundle/interface   | Unresolved                                                                |
+| Source-account identity and cross-account detection             | Import safety UX/contract | No account field; target-account warning only                             |
+| Replace transaction/rollback design                             | Replace feature           | `BLOCKED`; application snapshot is not a transaction                      |
+| Signing, source authentication, anti-replay                     | Trust model               | Not implemented                                                           |
+| Tools OpenPGP v6, MDC/recipient verification, `.hrtb` stability | Tools release/interface   | Unproven; MDC relies on the library, `inspect` does not verify recipients |
+| Windows durability/ACL/SMB behavior                             | Platform support claim    | `NOT_TESTED`; native CI is evidence, not proof                            |
+| Production/License Gate/Docker approval                         | Release/deployment        | `BLOCKED`                                                                 |
 
 Next priorities:
 

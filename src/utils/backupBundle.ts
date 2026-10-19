@@ -32,8 +32,8 @@ import {
 } from '../../logic';
 import type { AppTheme } from '../constants';
 import type { Lang } from '../i18n/translations';
-import { type PlanItem } from './plan';
-import { type Pack, type Supply } from './regimen';
+import { legacyCpaItem, normalizePlanItem, type PlanItem } from './plan';
+import { normalizeSupply, type Pack, type Supply } from './regimen';
 import {
     MAX_IMPORT_ENTRIES,
     loadJSONFromStorage,
@@ -325,6 +325,9 @@ const readStamp = (value: unknown, now?: number): Validation<number> => {
     }
     return { value };
 };
+
+/** What normalizeSyncState gives a weight or PK value that has no stamp. */
+const UNSTAMPED_SCALAR_AT = 1;
 
 const readStampString = (value: string | null): number | undefined => {
     if (value === null || value.trim() === '') return undefined;
@@ -800,6 +803,8 @@ export interface CompleteBackupExportReport {
     issues: string[];
     /** Records present in storage but absent from the bundle. */
     droppedRecords: number;
+    /** The part of droppedRecords that failed validation, not a collapsed duplicate. */
+    invalidRecords: number;
     duplicateIds: string[];
 }
 
@@ -807,6 +812,7 @@ interface CleanExportRecords<T> {
     values: T[];
     issues: string[];
     droppedRecords: number;
+    invalidRecords: number;
     duplicateIds: string[];
 }
 
@@ -823,7 +829,13 @@ const cleanExportRecords = <T>(
     now: number,
 ): CleanExportRecords<T> => {
     if (!Array.isArray(items)) {
-        return { values: [], issues: [`${path}: expected an array`], droppedRecords: 0, duplicateIds: [] };
+        return {
+            values: [],
+            issues: [`${path}: expected an array`],
+            droppedRecords: 0,
+            invalidRecords: 0,
+            duplicateIds: [],
+        };
     }
     if (items.length > MAX_IMPORT_ENTRIES) {
         throw new CompleteBackupExportError([
@@ -865,7 +877,7 @@ const cleanExportRecords = <T>(
     const invalidRecords = items.length - valid.length;
     if (invalidRecords > 0) issues.push(`${path}: dropped ${invalidRecords} invalid record(s)`);
     const droppedRecords = items.length - values.length;
-    return { values, issues, droppedRecords, duplicateIds: duplicates };
+    return { values, issues, droppedRecords, invalidRecords, duplicateIds: duplicates };
 };
 
 const cleanExportTombstoneMap = (raw: TombstoneMap, path: string, now: number, issues: string[]): TombstoneMap => {
@@ -916,6 +928,27 @@ const readBoundedStampString = (
 };
 
 /**
+ * A mode the app is not showing, read the way the app would load it: supplies
+ * saved before packs existed are upgraded, and cyproterone's old standalone
+ * choice counts as the feminizing plan. Read raw, those would be left out of
+ * the backup although the app shows them once the person switches modes.
+ */
+const readInactiveCategory = (storage: StorageLike, owner: string, mode: ModeKey, category: ArrayCategory): unknown => {
+    const key = modeKeyFor(owner, mode, CATEGORY_SUFFIX[category]);
+    if (category === 'plan' && mode === 'transfem' && storage.getItem(key) === null) {
+        const cpa = legacyCpaItem(storage.getItem(nsFor(owner, 'cpa-plan')));
+        if (cpa) return [cpa];
+    }
+    const raw = loadJSONFromStorage<unknown>(storage, key, []);
+    if (!Array.isArray(raw)) return raw;
+    // Anything the loader can't read is kept as it is, so the export report
+    // still counts it as left out.
+    if (category === 'supplies') return raw.map(item => normalizeSupply(item) ?? item);
+    if (category === 'plan') return raw.map(item => normalizePlanItem(item) ?? item);
+    return raw;
+};
+
+/**
  * Build a complete bundle from the current store, overlaying the active mode's
  * in-memory arrays (which can be newer than the persisted copy). The report
  * lists every record or stamp that could not be exported.
@@ -947,19 +980,19 @@ export function buildCompleteBackupBundleReportFromStorage(
     const issues: string[] = [];
     const duplicateIds = new Set<string>();
     let droppedRecords = 0;
+    let invalidRecords = 0;
 
     const readMode = (mode: ModeKey): CompleteBackupMode => {
         const block: CompleteBackupMode = {};
         for (const category of ARRAY_CATEGORIES) {
             const path = `${mode}.${category}`;
             const raw =
-                mode === activeMode
-                    ? activeArrays[category]
-                    : loadJSONFromStorage<unknown>(storage, modeKeyFor(owner, mode, CATEGORY_SUFFIX[category]), []);
+                mode === activeMode ? activeArrays[category] : readInactiveCategory(storage, owner, mode, category);
             const cleaned = cleanExportRecords(raw, path, VALIDATORS[category], now);
             block[category] = cleaned.values;
             issues.push(...cleaned.issues);
             droppedRecords += cleaned.droppedRecords;
+            invalidRecords += cleaned.invalidRecords;
             cleaned.duplicateIds.forEach(id => duplicateIds.add(id));
         }
         block.deletions = cleanExportTombstones(
@@ -1017,6 +1050,7 @@ export function buildCompleteBackupBundleReportFromStorage(
         },
         issues,
         droppedRecords,
+        invalidRecords,
         duplicateIds: [...duplicateIds],
     };
 }
@@ -1595,27 +1629,30 @@ const planScalars = (
                 ? Number(localRaw)
                 : undefined;
         const localStamp = readStampString(context.storage.getItem(nsFor(context.owner, 'weight-at')));
+        // Same rule as cloud sync: a value without a stamp counts as the floor
+        // stamp, so a stamped value beats it. Every device stores the untouched
+        // 70 kg default without a stamp; treating that as a conflict meant a
+        // backup's weight could never be restored onto a new device.
+        const incomingAt = parsed.weightUpdatedAt ?? UNSTAMPED_SCALAR_AT;
+        const localAt = localStamp ?? UNSTAMPED_SCALAR_AT;
         let action: ScalarPreviewAction;
         if (blocked.has('weight')) {
             action = 'blocked';
         } else if (localWeight === undefined) {
             action = 'added';
-        } else if (parsed.weightUpdatedAt === undefined || localStamp === undefined) {
-            if (localWeight === parsed.weight) action = 'unchanged';
-            else {
-                action = 'conflict';
-                conflicts.push('weight exists on both sides without a reliable timestamp and the values differ');
-                blocked.add('weight');
-            }
-        } else if (parsed.weightUpdatedAt < localStamp) {
+        } else if (incomingAt < localAt) {
             action = 'skipped';
-        } else if (parsed.weightUpdatedAt > localStamp) {
+        } else if (incomingAt > localAt) {
             action = 'updated';
         } else if (localWeight === parsed.weight) {
             action = 'unchanged';
         } else {
             action = 'conflict';
-            conflicts.push('weight has equal updatedAt but different content');
+            conflicts.push(
+                parsed.weightUpdatedAt === undefined
+                    ? 'weight exists on both sides without a reliable timestamp and the values differ'
+                    : 'weight has equal updatedAt but different content',
+            );
             blocked.add('weight');
         }
         preview.weight = { action, current: localWeight, incoming: parsed.weight };
@@ -1638,27 +1675,26 @@ const planScalars = (
         } else if (localStamp !== undefined) {
             localValue = null;
         }
+        const incomingAt = parsed.pkParamsUpdatedAt ?? UNSTAMPED_SCALAR_AT;
+        const localAt = localStamp ?? UNSTAMPED_SCALAR_AT;
         let action: ScalarPreviewAction;
         if (blocked.has('pkParams')) {
             action = 'blocked';
         } else if (localValue === undefined) {
             action = 'added';
-        } else if (parsed.pkParamsUpdatedAt === undefined || localStamp === undefined) {
-            if (canonical(localValue) === canonical(parsed.pkParams)) action = 'unchanged';
-            else {
-                action = 'conflict';
-                conflicts.push('pkParams exists on both sides without a reliable timestamp and the values differ');
-                blocked.add('pkParams');
-            }
-        } else if (parsed.pkParamsUpdatedAt < localStamp) {
+        } else if (incomingAt < localAt) {
             action = 'skipped';
-        } else if (parsed.pkParamsUpdatedAt > localStamp) {
+        } else if (incomingAt > localAt) {
             action = 'updated';
         } else if (canonical(localValue) === canonical(parsed.pkParams)) {
             action = 'unchanged';
         } else {
             action = 'conflict';
-            conflicts.push('pkParams has equal updatedAt but different content');
+            conflicts.push(
+                parsed.pkParamsUpdatedAt === undefined
+                    ? 'pkParams exists on both sides without a reliable timestamp and the values differ'
+                    : 'pkParams has equal updatedAt but different content',
+            );
             blocked.add('pkParams');
         }
         preview.pkParams = { action, current: localValue, incoming: parsed.pkParams };

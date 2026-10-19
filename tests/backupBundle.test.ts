@@ -787,6 +787,57 @@ describe('complete backup bundle data layer', () => {
         expect(pkPreview.blocked).toContain('pkParams');
     });
 
+    it('restores a stamped weight onto a device that only holds the unstamped 70 kg default', () => {
+        // Every device persists the default weight without a stamp the first
+        // time the app opens, so this is what a brand-new device looks like.
+        const bundle = build(seed());
+        bundle.weight = 62;
+        bundle.weightUpdatedAt = 3333;
+        const fresh = new MemoryStorage();
+        fresh.setItem('hrt-weight', '70');
+
+        const preview = inspectCompleteBackupBundle(bundle, context(fresh));
+        expect(preview.scalars.weight).toMatchObject({ action: 'updated', current: 70, incoming: 62 });
+        expect(preview.blocked).not.toContain('weight');
+
+        const result = mergeCompleteBackupBundleToStorage(bundle, context(fresh));
+        expect(result.weight).toBe(62);
+        expect(fresh.getItem('hrt-weight')).toBe('62');
+        expect(fresh.getItem('hrt-weight-at')).toBe('3333');
+    });
+
+    it('keeps a stamped local weight or PK value over an unstamped one from the bundle', () => {
+        const bundle = build(seed());
+        bundle.weight = 62;
+        delete bundle.weightUpdatedAt;
+        bundle.pkParams = { ...DEFAULT_PK_PARAMS, e2_kClear: 0.5 };
+        delete bundle.pkParamsUpdatedAt;
+
+        const local = new MemoryStorage();
+        local.setItem('hrt-weight', '80');
+        local.setItem('hrt-weight-at', '2222');
+        local.setItem('hrt-pk-params', JSON.stringify({ ...DEFAULT_PK_PARAMS, e2_kClear: 0.11 }));
+        local.setItem('hrt-pk-params-at', '2222');
+
+        const preview = inspectCompleteBackupBundle(bundle, context(local));
+        expect(preview.scalars.weight?.action).toBe('skipped');
+        expect(preview.scalars.pkParams?.action).toBe('skipped');
+        expect(preview.blocked).not.toEqual(expect.arrayContaining(['weight']));
+        expect(preview.blocked).not.toEqual(expect.arrayContaining(['pkParams']));
+    });
+
+    it('lets a stamped PK value from the bundle replace an unstamped local one', () => {
+        const bundle = build(seed());
+        const local = new MemoryStorage();
+        local.setItem('hrt-pk-params', JSON.stringify({ ...DEFAULT_PK_PARAMS, e2_kClear: 0.11 }));
+
+        const preview = inspectCompleteBackupBundle(bundle, context(local));
+        expect(preview.scalars.pkParams?.action).toBe('updated');
+        mergeCompleteBackupBundleToStorage(bundle, context(local));
+        expect(JSON.parse(local.getItem('hrt-pk-params') ?? 'null').e2_kClear).toBe(0.42);
+        expect(local.getItem('hrt-pk-params-at')).toBe('2222');
+    });
+
     it('previews calibration overwrite and applies it only through the explicit merge action', () => {
         const bundle = build(seed());
         const preview = inspectCompleteBackupBundle(bundle, context(new MemoryStorage()));
@@ -974,6 +1025,7 @@ describe('complete backup bundle data layer', () => {
         expect(report.duplicateIds).toEqual(['tf-e1']);
         expect(report.issues.join(' ')).toContain('duplicate id');
         expect(report.droppedRecords).toBe(1);
+        expect(report.invalidRecords).toBe(0);
         expect(report.bundle.modes.transfem.events).toHaveLength(1);
         expect(report.bundle.modes.transfem.events?.[0].doseMG).toBe(9);
 
@@ -1003,8 +1055,38 @@ describe('complete backup bundle data layer', () => {
 
         const report = buildReport(storage);
         expect(report.droppedRecords).toBe(1);
+        expect(report.invalidRecords).toBe(1);
         expect(report.issues.join(' ')).toContain('unknown route');
         expect(report.bundle.modes.transfem.events?.map(item => item.id)).toEqual(['good']);
+        const preview = inspectCompleteBackupBundle(report.bundle, context(new MemoryStorage()));
+        expect(preview.blocked).toEqual([]);
+    });
+
+    it('exports the mode not on screen the way the app would load it', () => {
+        const storage = seed();
+        // Saved before supplies had packs, and before cyproterone joined the plan.
+        storage.setItem(
+            key('transfem', 'supplies'),
+            JSON.stringify([{ id: 'old-supply', route: Route.oral, ester: Ester.E2, amount: 60, startedAt: 1_000 }]),
+        );
+        storage.removeItem(key('transfem', 'plan'));
+        storage.setItem('hrt-cpa-plan', JSON.stringify({ plan: 'alternate' }));
+
+        const report = buildReport(storage, 'transmasc');
+        expect(report.invalidRecords).toBe(0);
+        expect(report.bundle.modes.transfem.supplies).toEqual([
+            {
+                id: 'old-supply',
+                route: Route.oral,
+                ester: Ester.E2,
+                pack: { kind: 'bulk' },
+                count: 60,
+                startedAt: 1_000,
+            },
+        ]);
+        expect(report.bundle.modes.transfem.plan?.map(item => [item.id, item.ester, item.everyDays])).toEqual([
+            ['cpa', Ester.CPA, 2],
+        ]);
         const preview = inspectCompleteBackupBundle(report.bundle, context(new MemoryStorage()));
         expect(preview.blocked).toEqual([]);
     });

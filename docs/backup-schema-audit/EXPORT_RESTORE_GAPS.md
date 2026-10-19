@@ -35,11 +35,11 @@ mode, preferences, auth token, device passes, cloud key.
 
 Sanitizers (`706-780`):
 
-| Record | Validation / default |
-|---|---|
-| Event | Valid `Route`; finite `timeH` in range; dose clamped to `0..DOSE_MG_MAX`; ester regex `^[A-Za-z0-9_]{1,24}$`, unknown codes preserved; extras object; id generated if absent; `updatedAt` retained if valid |
-| Lab | Finite time/value; unit allowlist (default `pmol/l`); assay allowlist |
-| Template | Valid route; drug-code ester; finite non-negative dose; `createdAt` defaults to now |
+| Record   | Validation / default                                                                                                                                                                                        |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Event    | Valid `Route`; finite `timeH` in range; dose clamped to `0..DOSE_MG_MAX`; ester regex `^[A-Za-z0-9_]{1,24}$`, unknown codes preserved; extras object; id generated if absent; `updatedAt` retained if valid |
+| Lab      | Finite time/value; unit allowlist (default `pmol/l`); assay allowlist                                                                                                                                       |
+| Template | Valid route; drug-code ester; finite non-negative dose; `createdAt` defaults to now                                                                                                                         |
 
 `applySyncedState()` (`1230-1290`) sanitizes both modes before writing. It writes
 records, tombstones, and LWW `weight`/`pkParams`; it does **not** write quick
@@ -47,20 +47,20 @@ doses, supplies, plan, calibration, or preferences.
 
 ## 3. Gap matrix
 
-| Data group | Export | Import/restore | Persistence | Gap / risk | Status |
-|---|---|---|---|---|---|
-| Events | Yes | Yes | mode `events` | Dose clamp, route/ester/time validation; unknown ester preserved | **PASS_WITH_CAVEATS** |
-| Lab results | Yes | Yes | mode `lab-results` | Invalid unit defaults to `pmol/l`; assay allowlist | **PASS_WITH_CAVEATS** |
-| Dose templates | Yes | Yes | mode `dose-templates` | `extras: any`; `createdAt` defaults to now | **PASS_WITH_CAVEATS** |
-| Tombstones | Yes | Yes | mode `deletions` | Pruning and LWW; replacement import records dropped records | **PASS_WITH_CAVEATS** |
-| Weight | Yes | Yes | shared `weight` | Missing weight loads as `70`; absence vs default not encoded | **REVIEW_REQUIRED** |
-| PK params | Yes | Yes | shared `pk-params` | Null semantics; defaults; many numeric fields | **REVIEW_REQUIRED** |
-| Quick doses | **No** | **No** | mode `quick-doses` | Local-only; no export/import path | **FAIL** for complete device backup |
-| Supplies | **No** | **No** | mode `supplies` | Local-only; `pack` object union not represented in current export; normalizer is permissive | **FAIL** |
-| Plan | **No** | **No** | mode `plan` | Local-only; no restore path; no upper bounds in normalizer | **FAIL** |
-| Calibration | **No** | **No** | shared `cal-method`, `cal-history-mode` | Local-only; default `mipd`/`retrospective` | **FAIL** |
-| Preferences | **No** | **No** | multiple keys | Portable vs device-local undecided | **NEEDS_HUMAN_APPROVAL** |
-| Credentials | **No** | **No** | auth/device/enc keys | Must never be backed up | **PASS** (excluded) |
+| Data group     | Export | Import/restore | Persistence                             | Gap / risk                                                                                  | Status                              |
+| -------------- | ------ | -------------- | --------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------- |
+| Events         | Yes    | Yes            | mode `events`                           | Dose clamp, route/ester/time validation; unknown ester preserved                            | **PASS_WITH_CAVEATS**               |
+| Lab results    | Yes    | Yes            | mode `lab-results`                      | Invalid unit defaults to `pmol/l`; assay allowlist                                          | **PASS_WITH_CAVEATS**               |
+| Dose templates | Yes    | Yes            | mode `dose-templates`                   | `extras: any`; `createdAt` defaults to now                                                  | **PASS_WITH_CAVEATS**               |
+| Tombstones     | Yes    | Yes            | mode `deletions`                        | Pruning and LWW; replacement import records dropped records                                 | **PASS_WITH_CAVEATS**               |
+| Weight         | Yes    | Yes            | shared `weight`                         | Missing weight loads as `70`; absence vs default not encoded                                | **REVIEW_REQUIRED**                 |
+| PK params      | Yes    | Yes            | shared `pk-params`                      | Null semantics; defaults; many numeric fields                                               | **REVIEW_REQUIRED**                 |
+| Quick doses    | **No** | **No**         | mode `quick-doses`                      | Local-only; no export/import path                                                           | **FAIL** for complete device backup |
+| Supplies       | **No** | **No**         | mode `supplies`                         | Local-only; `pack` object union not represented in current export; normalizer is permissive | **FAIL**                            |
+| Plan           | **No** | **No**         | mode `plan`                             | Local-only; no restore path; no upper bounds in normalizer                                  | **FAIL**                            |
+| Calibration    | **No** | **No**         | shared `cal-method`, `cal-history-mode` | Local-only; default `mipd`/`retrospective`                                                  | **FAIL**                            |
+| Preferences    | **No** | **No**         | multiple keys                           | Portable vs device-local undecided                                                          | **NEEDS_HUMAN_APPROVAL**            |
+| Credentials    | **No** | **No**         | auth/device/enc keys                    | Must never be backed up                                                                     | **PASS** (excluded)                 |
 
 ## 4. Version and compatibility risks
 
@@ -105,11 +105,11 @@ worker hardening, not backup completeness.
 
 ## 7. Status
 
-| Item | Status |
-|---|---|
-| Current record backup | **PASS_WITH_CAVEATS** |
-| Complete device backup | **FAIL** |
-| Local-only restore semantics | **NOT_IMPLEMENTED / NEEDS_HUMAN_APPROVAL** |
-| Version/scope discrimination | **REVIEW_REQUIRED** |
-| Credentials exclusion | **PASS** |
-| Test coverage for export/restore | **FAIL** |
+| Item                             | Status                                     |
+| -------------------------------- | ------------------------------------------ |
+| Current record backup            | **PASS_WITH_CAVEATS**                      |
+| Complete device backup           | **FAIL**                                   |
+| Local-only restore semantics     | **NOT_IMPLEMENTED / NEEDS_HUMAN_APPROVAL** |
+| Version/scope discrimination     | **REVIEW_REQUIRED**                        |
+| Credentials exclusion            | **PASS**                                   |
+| Test coverage for export/restore | **FAIL**                                   |

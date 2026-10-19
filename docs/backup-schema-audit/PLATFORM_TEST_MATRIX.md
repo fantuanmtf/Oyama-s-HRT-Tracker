@@ -19,20 +19,20 @@ It uses only the Go standard library. It is not linked into the product.
 
 ## Test matrix
 
-| ID | Scenario | Linux | Windows | Notes |
-|---|---|---|---|---|
-| P-01 | Existing target is not overwritten | PASS | NOT_TESTED | `os.Link` returns an exists error; target content unchanged |
-| P-02 | 8 concurrent writers, exactly one winner | PASS | NOT_TESTED | Target is one complete payload; no temp files remain |
-| P-03 | Cleanup removes only old `.hrt-tmp-*` regular files | PASS | NOT_TESTED | Unrelated file remains; old own temp removed |
-| P-04 | Missing parent directory leaves no output/temp | PASS | NOT_TESTED | `CreateTemp` fails before any publish |
-| P-05 | New file permissions are 0600 on Unix | PASS | NOT_TESTED | Windows does not treat `0600` as an ACL guarantee |
-| P-06 | Unicode and spaces in path | PASS | NOT_TESTED | Native path handling |
-| P-07 | Directory fsync | BEST_EFFORT | NOT_TESTED | Error intentionally ignored; durability not proven |
-| P-08 | Crash after temp creation before publish | NOT_TESTED | NOT_TESTED | Cleanup is best-effort, not a crash guarantee |
-| P-09 | Windows ACL / sensitive-file protection | N/A | NOT_TESTED | Must be validated with Windows ACLs; Unix mode is insufficient |
-| P-10 | Windows hard-link support / privilege | N/A | NOT_TESTED | NTFS and runner policy may affect `os.Link` |
-| P-11 | Network filesystem / SMB semantics | NOT_TESTED | NOT_TESTED | Hard-link and atomicity semantics may differ |
-| P-12 | File locking / concurrent processes | PARTIAL | NOT_TESTED | No cross-process lock; no-replace link is the only guard |
+| ID   | Scenario                                            | Linux       | Windows    | Notes                                                          |
+| ---- | --------------------------------------------------- | ----------- | ---------- | -------------------------------------------------------------- |
+| P-01 | Existing target is not overwritten                  | PASS        | NOT_TESTED | `os.Link` returns an exists error; target content unchanged    |
+| P-02 | 8 concurrent writers, exactly one winner            | PASS        | NOT_TESTED | Target is one complete payload; no temp files remain           |
+| P-03 | Cleanup removes only old `.hrt-tmp-*` regular files | PASS        | NOT_TESTED | Unrelated file remains; old own temp removed                   |
+| P-04 | Missing parent directory leaves no output/temp      | PASS        | NOT_TESTED | `CreateTemp` fails before any publish                          |
+| P-05 | New file permissions are 0600 on Unix               | PASS        | NOT_TESTED | Windows does not treat `0600` as an ACL guarantee              |
+| P-06 | Unicode and spaces in path                          | PASS        | NOT_TESTED | Native path handling                                           |
+| P-07 | Directory fsync                                     | BEST_EFFORT | NOT_TESTED | Error intentionally ignored; durability not proven             |
+| P-08 | Crash after temp creation before publish            | NOT_TESTED  | NOT_TESTED | Cleanup is best-effort, not a crash guarantee                  |
+| P-09 | Windows ACL / sensitive-file protection             | N/A         | NOT_TESTED | Must be validated with Windows ACLs; Unix mode is insufficient |
+| P-10 | Windows hard-link support / privilege               | N/A         | NOT_TESTED | NTFS and runner policy may affect `os.Link`                    |
+| P-11 | Network filesystem / SMB semantics                  | NOT_TESTED  | NOT_TESTED | Hard-link and atomicity semantics may differ                   |
+| P-12 | File locking / concurrent processes                 | PARTIAL     | NOT_TESTED | No cross-process lock; no-replace link is the only guard       |
 
 ## Platform risks
 

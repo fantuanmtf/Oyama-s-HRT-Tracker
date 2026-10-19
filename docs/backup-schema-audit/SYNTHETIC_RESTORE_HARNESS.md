@@ -7,11 +7,11 @@
 
 A test model is not the production restore path. Three layers must stay distinct:
 
-| Layer | What it proves | Can run now? | Evidence |
-|---|---|---|---|
-| **L1 — Pure restore model** | The specified merge/replace/conflict rules behave as written | Yes, independent of app code | Model tests + fixture diffs |
-| **L2 — Production-function tests** | The real sanitizers/export/apply functions match the model | No; restore functions do not exist | Requires exported functions or a test seam |
-| **L3 — End-to-end restore** | Browser/localStorage behavior, rollback, UI confirmation | No; production restore is `NOT_IMPLEMENTED` | Requires approved production implementation |
+| Layer                              | What it proves                                               | Can run now?                                | Evidence                                    |
+| ---------------------------------- | ------------------------------------------------------------ | ------------------------------------------- | ------------------------------------------- |
+| **L1 — Pure restore model**        | The specified merge/replace/conflict rules behave as written | Yes, independent of app code                | Model tests + fixture diffs                 |
+| **L2 — Production-function tests** | The real sanitizers/export/apply functions match the model   | No; restore functions do not exist          | Requires exported functions or a test seam  |
+| **L3 — End-to-end restore**        | Browser/localStorage behavior, rollback, UI confirmation     | No; production restore is `NOT_IMPLEMENTED` | Requires approved production implementation |
 
 A passing L1 run must never be reported as “restore works.” L2 and L3 remain `BLOCKED` until production code exists.
 
@@ -62,7 +62,7 @@ Provide both modes (`transfem`, `transmasc`) and at least one cross-mode fixture
 ### Quick doses
 
 ```json
-{"id":"qd-001","route":"injection","ester":"EV","value":2.0,"createdAt":1893456000000}
+{ "id": "qd-001", "route": "injection", "ester": "EV", "value": 2.0, "createdAt": 1893456000000 }
 ```
 
 Cover: valid, empty array, duplicate id, same id different value, invalid route/ester, non-finite value.
@@ -72,7 +72,14 @@ Cover: valid, empty array, duplicate id, same id different value, invalid route/
 Use the production object union, never a string:
 
 ```json
-{"id":"sup-001","route":"injection","ester":"EV","pack":{"kind":"vial","ml":5,"mgPerMl":40},"count":2,"startedAt":1893456000000}
+{
+  "id": "sup-001",
+  "route": "injection",
+  "ester": "EV",
+  "pack": { "kind": "vial", "ml": 5, "mgPerMl": 40 },
+  "count": 2,
+  "startedAt": 1893456000000
+}
 ```
 
 Cover every branch:
@@ -91,7 +98,15 @@ Negative fixtures: string `pack`, unknown `kind`, missing branch field, zero/neg
 ### Plan items
 
 ```json
-{"id":"plan-001","route":"injection","ester":"EV","doseMG":2,"extras":{"releaseRate":0},"everyDays":3.5,"timesPerDay":1}
+{
+  "id": "plan-001",
+  "route": "injection",
+  "ester": "EV",
+  "doseMG": 2,
+  "extras": { "releaseRate": 0 },
+  "everyDays": 3.5,
+  "timesPerDay": 1
+}
 ```
 
 Cover: daily (`everyDays=1`, `timesPerDay=2`), non-daily (forces `timesPerDay=1`), zero/negative dose, `everyDays<1`, invalid route/ester, extras object/null, unknown extras.
@@ -99,7 +114,7 @@ Cover: daily (`everyDays=1`, `timesPerDay=2`), non-daily (forces `timesPerDay=1`
 ### Calibration
 
 ```json
-{"method":"ekf","historyMode":"forward"}
+{ "method": "ekf", "historyMode": "forward" }
 ```
 
 Cover valid values, legacy aliases (`average`, `adaptive`), invalid method/history mode, missing object.
@@ -127,23 +142,23 @@ auth_token, auth_user, weak_password, login_device_passes, enc_key
 
 ## 4. Test matrix T1–T15
 
-| ID | Purpose | Setup | Operation | Expected | Layer |
-|---|---|---|---|---|---|
-| T1 | Both-mode round trip | records + local-only in both modes | replace | exact counts/IDs per mode | L1 |
-| T2 | Merge adds new IDs | local has A/B; backup has B/C | merge | A/B/C; B policy applied | L1 |
-| T3 | Replace clears only selected categories | local has extra quick/supply/plan | replace | selected cleared; credentials untouched | L1 |
-| T4 | Duplicate ID inside backup | two `sup-001` entries | validate | reject category, zero writes | L1 |
-| T5 | Invalid pack branch | string/missing/negative | validate | reject; no partial state | L1 |
-| T6 | Phase1D string pack | `"pack":"vial"` | validate | reject with schema error | L1 |
-| T7 | Plan bounds | `everyDays=0`, `timesPerDay=0` | validate | reject; valid values normalized | L1 |
-| T8 | Calibration conflict | local `ekf`, backup `mipd` | merge/replace | no silent overwrite; decision recorded | L1 |
-| T9 | Preference matrix | include + excluded keys | merge | only allowlisted applied; credentials absent | L1 |
-| T10 | Unknown version/field | `formatVersion:999`, unknown critical | validate | read-only preview; no writes | L1 |
-| T11 | Mid-write rollback | valid backup; fault at key 3 | apply | prior snapshot restored; no partial | L1 simulated / L3 real |
-| T12 | Cross-account/mode | different account/mode | restore | warning; no namespace crossover | L1 |
-| T13 | Credentials in backup | auth/enc_key fields | validate | reject/ignore; never persisted | L1 |
-| T14 | Empty vs missing | `[]` vs absent | merge | empty preserved; missing reported | L1 |
-| T15 | Idempotence | run same restore twice | merge | no duplicates; stable counts | L1 |
+| ID  | Purpose                                 | Setup                                 | Operation     | Expected                                     | Layer                  |
+| --- | --------------------------------------- | ------------------------------------- | ------------- | -------------------------------------------- | ---------------------- |
+| T1  | Both-mode round trip                    | records + local-only in both modes    | replace       | exact counts/IDs per mode                    | L1                     |
+| T2  | Merge adds new IDs                      | local has A/B; backup has B/C         | merge         | A/B/C; B policy applied                      | L1                     |
+| T3  | Replace clears only selected categories | local has extra quick/supply/plan     | replace       | selected cleared; credentials untouched      | L1                     |
+| T4  | Duplicate ID inside backup              | two `sup-001` entries                 | validate      | reject category, zero writes                 | L1                     |
+| T5  | Invalid pack branch                     | string/missing/negative               | validate      | reject; no partial state                     | L1                     |
+| T6  | Phase1D string pack                     | `"pack":"vial"`                       | validate      | reject with schema error                     | L1                     |
+| T7  | Plan bounds                             | `everyDays=0`, `timesPerDay=0`        | validate      | reject; valid values normalized              | L1                     |
+| T8  | Calibration conflict                    | local `ekf`, backup `mipd`            | merge/replace | no silent overwrite; decision recorded       | L1                     |
+| T9  | Preference matrix                       | include + excluded keys               | merge         | only allowlisted applied; credentials absent | L1                     |
+| T10 | Unknown version/field                   | `formatVersion:999`, unknown critical | validate      | read-only preview; no writes                 | L1                     |
+| T11 | Mid-write rollback                      | valid backup; fault at key 3          | apply         | prior snapshot restored; no partial          | L1 simulated / L3 real |
+| T12 | Cross-account/mode                      | different account/mode                | restore       | warning; no namespace crossover              | L1                     |
+| T13 | Credentials in backup                   | auth/enc_key fields                   | validate      | reject/ignore; never persisted               | L1                     |
+| T14 | Empty vs missing                        | `[]` vs absent                        | merge         | empty preserved; missing reported            | L1                     |
+| T15 | Idempotence                             | run same restore twice                | merge         | no duplicates; stable counts                 | L1                     |
 
 ### Conflict-strategy variants
 
