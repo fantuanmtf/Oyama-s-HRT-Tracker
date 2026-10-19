@@ -32,6 +32,24 @@ The module is pinned to gopenpgp `v3.5.2`; the linked runtime closure is only
 gopenpgp, go-crypto, circl, `x/crypto`, and `x/sys`. See
 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
+## Release packaging
+
+```sh
+tools/hrt-cold/scripts/build-release.sh 0.1.0 /path/to/output
+```
+
+The script runs the Go tests, builds these four static binaries with
+`CGO_ENABLED=0`, stages the README, notices, licence, and build info, and writes
+`hrt-cold-0.1.0-multiarch.tar.xz` plus SHA-512 and MD5 files:
+
+- `linux/amd64`
+- `windows/amd64` (`.exe`)
+- `linux/386`
+- `windows/386` (`.exe`)
+
+The Go CLI cross-compiles directly with `GOOS`/`GOARCH`; `crossdev` is not part
+of this build. Sign the resulting archive offline before distributing it.
+
 ## Commands
 
 ### keygen
@@ -162,6 +180,18 @@ hrt-cold inspect --in complete-backup.hrtb --recipient backup-public.asc
   packet, instead of reporting them as valid backups.
 - `inspect` cannot detect tampering of the ciphertext because it does not
   decrypt or verify the MDC. Use `decrypt` for integrity verification.
+
+### version
+
+```sh
+hrt-cold version
+```
+
+- Prints the CLI build version, the Go runtime version, and the build platform
+  (`goos/goarch`). Packaged binaries set the CLI version with
+  `-ldflags "-X main.buildVersion=..."`.
+- This is the binary version, not the experimental `.hrtb` format version or
+  the native C ABI version.
 
 ## `.hrtb` container (experimental)
 

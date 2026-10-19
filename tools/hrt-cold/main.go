@@ -25,6 +25,10 @@ const (
 	maxPassphraseBytes = 4096
 )
 
+// buildVersion is overridden with -ldflags "-X main.buildVersion=..." for
+// packaged binaries. It is not a format or ABI version.
+var buildVersion = "0.1.0"
+
 var (
 	errOutputExists   = errors.New("output already exists")
 	errTooLarge       = errors.New("input exceeds size limit")
@@ -51,6 +55,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		err = cmdDecrypt(args[1:], stdout, stderr)
 	case "inspect":
 		err = cmdInspect(args[1:], stdout, stderr)
+	case "version":
+		err = cmdVersion(stdout)
 	case "help", "-h", "--help":
 		usage(stdout)
 		return 0
@@ -77,6 +83,7 @@ func usage(w io.Writer) {
                    [--allow-older] [--no-replay-check] [--replay-state FILE]
                    --in FILE --out FILE
   hrt-cold inspect --in FILE [--recipient FILE]
+  hrt-cold version
 
 Signing is recommended: encrypt signs the plaintext with the signer key, and
 decrypt verifies it when --verify-key is supplied. Verified decrypts also
@@ -84,6 +91,13 @@ check a local high-water mark to refuse an older backup (anti-replay).
 
 All commands are offline. The .hrtb container format is experimental and is
 not a stable production format.`)
+}
+
+func cmdVersion(stdout io.Writer) error {
+	fmt.Fprintf(stdout, "hrt-cold %s\n", buildVersion)
+	fmt.Fprintf(stdout, "go: %s\n", runtime.Version())
+	fmt.Fprintf(stdout, "platform: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	return nil
 }
 
 func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {

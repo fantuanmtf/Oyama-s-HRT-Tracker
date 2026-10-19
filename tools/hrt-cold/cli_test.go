@@ -947,6 +947,18 @@ func TestWriteFailureLeavesNoPartialOutput(t *testing.T) {
 	assertNoTempFiles(t, dir)
 }
 
+func TestVersionCommand(t *testing.T) {
+	stdout, stderr, code := runCLI(t, "version")
+	if code != 0 {
+		t.Fatalf("version failed with code %d: %s", code, stderr)
+	}
+	for _, want := range []string{"hrt-cold " + buildVersion, "go: ", "platform: " + runtime.GOOS + "/" + runtime.GOARCH} {
+		if !strings.Contains(stdout, want) {
+			t.Fatalf("version output missing %q: %s", want, stdout)
+		}
+	}
+}
+
 func TestCLIUsage(t *testing.T) {
 	if _, _, code := runCLI(t); code != 2 {
 		t.Fatalf("no arguments: code = %d, want 2", code)

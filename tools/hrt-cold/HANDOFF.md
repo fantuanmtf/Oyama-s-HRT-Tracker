@@ -92,6 +92,7 @@ parser and bundle validator with differential tests against the Go CLI.
 - `inspect`: reads container metadata and unauthenticated PKESK recipient
   identifiers without decrypting; `--recipient` compares the advertised key ID
   to the supplied key for information only. It never verifies the recipient.
+- `version`: prints the CLI build version, Go runtime, and `goos/goarch`.
 
 ## Security remediation after checkpoint
 

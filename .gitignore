@@ -8,6 +8,9 @@
 /build/
 /build-*/
 
+# Release archives and staged binaries
+/dist/
+
 # Local editor and OS files
 .DS_Store
 *.swp
