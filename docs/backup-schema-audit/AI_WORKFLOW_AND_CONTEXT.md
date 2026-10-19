@@ -225,18 +225,18 @@ Use a fresh local D1 database and synthetic accounts/data. Keep the local server
 bound to loopback and record status, headers, and the narrow response body for
 each check.
 
-| ID   | Check                             | Expected evidence                                                                                                                        |
-| ---- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| B-01 | Local migrations and Worker start | Local D1 migration succeeds; `wrangler dev --local` starts without touching remote bindings                                              |
-| B-02 | `GET /api/transparency`           | 200 JSON aggregate; documented fields; no PII, tokens, or per-user records                                                               |
-| B-03 | Response headers                  | `Content-Type: application/json`, `Cache-Control: no-store`, security headers present, CORS origin/method/header values match the Worker |
-| B-04 | CORS preflight                    | `OPTIONS` succeeds with the allowed methods/headers; record the exact response                                                           |
-| B-05 | Authentication boundary           | Missing, malformed, expired, and revoked tokens fail closed; session-level 401 includes `X-Session-Invalid: 1` where expected            |
-| B-06 | Authorization boundary            | A normal synthetic user cannot use admin routes or read another user's content/share; record status only, never data                     |
-| B-07 | Error handling                    | Malformed JSON, bad methods, unknown routes, and invalid IDs return expected 4xx; no stack traces, SQL, secrets, or cross-user data      |
-| B-08 | Input limits                      | Truncated/oversized bodies fail without 500 or partial writes; limits are recorded as observed                                           |
-| B-09 | Rate limiting                     | A small local burst returns 429 with `Retry-After` when the local binding is active; do not run a load/DoS test                          |
-| B-10 | Cleanup                           | Stop the local server and confirm no remote resources, committed secrets, or production data were created                                |
+| ID   | Check                             | Expected evidence                                                                                                                                                                                                                |
+| ---- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| B-01 | Local migrations and Worker start | Local D1 migration succeeds; `wrangler dev --local` starts without touching remote bindings                                                                                                                                      |
+| B-02 | `GET /api/transparency`           | 200 JSON aggregate; documented fields; no PII, tokens, or per-user records                                                                                                                                                       |
+| B-03 | Response headers                  | `Content-Type: application/json`, `Cache-Control: public, max-age=15` (aggregate + anonymized data; intentional public cache — decision 2026-10-19), security headers present, CORS origin/method/header values match the Worker |
+| B-04 | CORS preflight                    | `OPTIONS` succeeds with the allowed methods/headers; record the exact response                                                                                                                                                   |
+| B-05 | Authentication boundary           | Missing, malformed, expired, and revoked tokens fail closed; session-level 401 includes `X-Session-Invalid: 1` where expected                                                                                                    |
+| B-06 | Authorization boundary            | A normal synthetic user cannot use admin routes or read another user's content/share; record status only, never data                                                                                                             |
+| B-07 | Error handling                    | Malformed JSON, bad methods, unknown routes, and invalid IDs return expected 4xx; no stack traces, SQL, secrets, or cross-user data                                                                                              |
+| B-08 | Input limits                      | Truncated/oversized bodies fail without 500 or partial writes; limits are recorded as observed                                                                                                                                   |
+| B-09 | Rate limiting                     | A small local burst returns 429 with `Retry-After` when the local binding is active; do not run a load/DoS test                                                                                                                  |
+| B-10 | Cleanup                           | Stop the local server and confirm no remote resources, committed secrets, or production data were created                                                                                                                        |
 
 `NOT_TESTED` must be written explicitly for anything not exercised, including
 passkey/WebAuthn browser flows, R2, scheduled jobs, production rate limits,

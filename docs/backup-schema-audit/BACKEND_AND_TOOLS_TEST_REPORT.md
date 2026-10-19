@@ -222,13 +222,13 @@ npx wrangler dev --local --ip 127.0.0.1 --port 8787 \
 `Content-Security-Policy`, `Permissions-Policy`,
 `X-Content-Type-Options: nosniff`, and `X-Frame-Options: DENY`.
 
-**Note — cache policy mismatch:** `/api/transparency` returned
-`Cache-Control: public, max-age=15`, not the `Cache-Control: no-store` value
-listed as expected evidence for B-03 in
-`AI_WORKFLOW_AND_CONTEXT.md`. The body contains aggregate counts only and no
-per-user data, so this may be intentional public caching. A human should confirm
-whether the 15-second public cache is the intended policy and update either the
-implementation or the test matrix.
+**Note — cache policy (resolved):** `/api/transparency` returns
+`Cache-Control: public, max-age=15`. The body is aggregate counts plus
+anonymized recent registrations (four-hex-character UUID prefix and
+hour-rounded timestamp); it contains no username, token, per-user row, or exact
+registration moment. Decision (2026-10-19): keep the public 15-second cache and
+update the B-03 expectation in `AI_WORKFLOW_AND_CONTEXT.md`; the cache is
+intentional and reduces D1 load for the public transparency page.
 
 **Note — preflight headers:** the `OPTIONS` response carries CORS headers only;
 it does not repeat the security headers. This is normal for a bodyless preflight
