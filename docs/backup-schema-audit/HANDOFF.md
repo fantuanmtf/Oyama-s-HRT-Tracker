@@ -7,6 +7,11 @@ map, context-budget rules, parallel tracks, test commands, backend smoke plan,
 and handoff template. The sections below are the chronological checkpoint log;
 older entries may name superseded SHAs.
 
+**Update (later 2026-10-19):** website L3 browser tests and the journaled
+Replace transaction are on `agent/add-gpg-website` (PR #129); Tools signing,
+pinned verification, and local anti-replay are on `Recovery/Tools` @
+`84a44ea`. Older status lines are historical.
+
 - **Website:** `origin/agent/add-gpg-website` @ `8f2650b`; PR #129 (base
   `upstream/main` @ `5c5d9fe`) is open and now **ready for review**
   (`draft=false`), not merged.

@@ -7,6 +7,13 @@ This is a documentation handoff, not a production approval. It does not claim
 L3/browser coverage, OpenPGP encryption in the website, all-or-nothing restore,
 Windows durability, License Gate clearance, or the absence of vulnerabilities.
 
+**Update (later 2026-10-19):** website browser L3 tests and the journaled
+Replace transaction are now implemented on `agent/add-gpg-website` (PR #129,
+`e2e/`); Tools signing, pinned verification, and local anti-replay are on
+`Recovery/Tools` @ `84a44ea`. The sections below describe the earlier snapshot
+and remain useful for history; check the current branch before relying on a
+status line.
+
 ## 1. Branch and PR map
 
 | Ref                                | SHA                                        | Meaning                                                  |

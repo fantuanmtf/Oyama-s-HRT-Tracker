@@ -5,6 +5,10 @@
 audit, not production approval, and does not claim the absence of
 vulnerabilities.
 
+**Update (later 2026-10-19):** browser L3 coverage now exists in PR #129
+(`e2e/`, 14 Playwright tests), and Tools signing/replay is at
+`Recovery/Tools` @ `84a44ea`. The report below records the earlier run.
+
 ## Pinned revisions
 
 | Track           | Ref                     | SHA                                        | Worktree                                |

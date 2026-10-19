@@ -3,6 +3,9 @@
 **Status:** local synthetic check only. This is not a production approval, a
 security audit, or a claim that the format is stable.
 
+**Update (later 2026-10-19):** the website-side UI steps are now automated in
+PR #129 `e2e/`; this document records the earlier interactive run.
+
 **Date:** 2026-10-19
 **Platform:** Linux x86_64 (local Miniflare/Workerd, not Cloudflare production)
 
