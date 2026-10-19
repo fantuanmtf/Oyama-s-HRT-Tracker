@@ -571,3 +571,75 @@ browser-level regression test for P2-1.
   `01275fc16b9d73ea7316776f886a57505debe49e`.
 - This note is a docs-only follow-up commit on the same branch; no other ref,
   main, upstream, Tools checkout, PR, merge, or release was changed.
+
+## Website review fixes: tombstone persistence, ids, account fingerprint, plan loader (2026-10-19)
+
+- **Branch/worktree:** `agent/add-gpg-website-review` in
+  `/tmp/opencode/hrt-website-review2`; base
+  `fbe63cf27d9ba3300efa1abb2267b7a47151e504`, verified with `git ls-remote`
+  before the worktree was created. The previous branch worktree was left
+  untouched.
+- **Tools reference:** `Recovery/Tools` @
+  `7ee628b6455dee31ca044e453dff31e6d17a7e56`, read only through git objects.
+  No Tools branch, worktree, or file was changed.
+- **Code + tests commit:** `0d813d4` —
+  `fix: persist pruned tombstones and harden backup ids`.
+- **Files:** `logic.ts`, `src/utils/backupBundle.ts`, `src/utils/plan.ts`,
+  `src/utils/syncMerge.ts`, `tests/backupBundle.test.ts`,
+  `tests/backupState.test.ts`, `docs/backup-schema-audit/*`.
+
+### Fixes
+
+- **P1-A expired local tombstones:** `planDeletions` now sets `writeNeeded`
+  when it drops a local entry outside the TTL/cap bounds or when the pruned
+  local map differs from the stored one. The pruned map is written in the same
+  merge. The regression test imports an older record over an expired local
+  tombstone, then feeds the stored tombstones to `mergeSyncStates` and checks
+  that the restored record is not deleted again.
+- **P1-B prototype names:** bundle validation rejects every own property name
+  of `Object.prototype` (`toString`, `valueOf`, `hasOwnProperty`,
+  `__proto__`, `constructor`, and the rest) plus `prototype`. `syncMerge`
+  tombstone maps are null-prototype objects and every tombstone/id lookup uses
+  `Object.hasOwn`; `mergeTombstoneMaps` no longer uses `in`. Tests cover
+  `toString`/`valueOf` rejection through import and an inherited
+  `toString` value not acting as a deletion during sync.
+- **P2-C account fingerprint:** `CompleteBackupPreview` carries `targetOwner`,
+  and `completeBackupPreviewFingerprint` includes it. Re-previewing the same
+  file against a different owner changes the fingerprint, so the existing
+  confirm-time comparison forces a new preview instead of applying stale
+  consent to another account. A data-layer test compares two owners.
+- **Plan loader compatibility:** `isDrugCode` is now shared by logic, the
+  bundle validators, and `normalizePlanItem`. A syntactically valid unknown
+  code (for example `FUTURE1`) is preserved by the plan loader instead of
+  dropping the row. `hormoneOf` classifies it as unmodelled (`other`), so it
+  contributes no simulated curve, and it is never rewritten to E2. Tests
+  cover the bundle round-trip, loader, and unmodelled simulation result.
+
+### Checks actually run
+
+- `node node_modules/typescript/bin/tsc --noEmit` — pass.
+- Focused `backupBundle` + `backupState` — 2 files, 43/43 pass.
+- Full Vitest — 19 files pass; 417 passed, 4 expected fail (421 total). One
+  unrelated calibration test timed out while the production build ran in
+  parallel; it passed isolated (71/71) and the final standalone full run
+  passed.
+- `node node_modules/vite/bin/vite.js build` — Vite production build pass
+  (existing large-chunk warning only).
+- `prettier --write` on changed source/test/doc files — clean.
+- `eslint` on changed TS/TSX files — 0 errors; existing warnings only.
+- `git diff --check` — pass.
+
+### Status and limits
+
+- These fixes are website-side only. No L3/browser E2E, Replace, signing, key
+  management, production restore rollback, schema/DB/Worker/Docker/License
+  change, or real data/secret was added.
+- BTV-3 (`formatVersion: 1.0`) and BTV-7 (unknown per-record fields) remain
+  unresolved product/interface decisions.
+- Replace remains `BLOCKED`; multi-key rollback is still application-level,
+  not a `localStorage` transaction.
+- The website importer remains the record-semantics authority; Tools validates
+  only the envelope/container.
+- **Push:** the code commit and this documentation checkpoint are pushed
+  non-force to `origin/agent/add-gpg-website`; the final remote SHA is recorded
+  in the task result.
