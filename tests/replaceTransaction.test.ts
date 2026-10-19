@@ -188,6 +188,19 @@ describe('complete-backup replace transaction', () => {
         expect(storage.getItem(REPLACE_JOURNAL_KEY)).toBeNull();
     });
 
+    it('replaces only the target account namespace', () => {
+        const storage = new FakeStorage();
+        storage.setItem('hrt-uuser-1-events', JSON.stringify([event('account-old')]));
+        storage.setItem('hrt-events', JSON.stringify([event('local-keep')]));
+        const accountContext = { ...context(storage), owner: 'user-1' };
+
+        replaceCompleteBackupBundleToStorage(bundle(), accountContext);
+
+        expect(JSON.parse(storage.getItem('hrt-uuser-1-events')!)).toEqual([event('tf-event')]);
+        expect(JSON.parse(storage.getItem('hrt-events')!)).toEqual([event('local-keep')]);
+        expect(storage.getItem('hrt-uuser-1-cal-method')).toBe('off');
+    });
+
     it('refuses an incomplete bundle before writing anything', () => {
         const storage = new FakeStorage();
         seedExistingData(storage);
