@@ -1,5 +1,25 @@
 # Backup Schema Audit — Handoff
 
+## Current state and fast path (2026-10-19)
+
+Use [`AI_WORKFLOW_AND_CONTEXT.md`](AI_WORKFLOW_AND_CONTEXT.md) for the branch
+map, context-budget rules, parallel tracks, test commands, backend smoke plan,
+and handoff template. The sections below are the chronological checkpoint log;
+older entries may name superseded SHAs.
+
+- **Website:** `origin/agent/add-gpg-website` @ `8f2650b`; PR #129 (base
+  `upstream/main` @ `5c5d9fe`) is open and now **ready for review**
+  (`draft=false`), not merged.
+- **Tools:** `origin/Recovery/Tools` @ `7ee628b`; experimental offline OpenPGP
+  CLI.
+- **Audit/Privacy:** both @ `9874c40`; upstream lacks `Privacy/Add-GPG`, so
+  PR #129 carries the audit/L2 commits.
+- **Open:** BTV-3/7, signing/source authentication/anti-replay, Replace
+  all-or-nothing, L3 browser E2E, Tools v6/MDC/recipient verification, and
+  Windows durability; see issues #127 and #128.
+- **Checks for this docs-only update:** `git diff --check`; no build or test
+  suite was run. No production, L3, or "no vulnerabilities" claim is made.
+
 ## Goal and scope
 
 Audit the production data model and export/restore paths to define what a
