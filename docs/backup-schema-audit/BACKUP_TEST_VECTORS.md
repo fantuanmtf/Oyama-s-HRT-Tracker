@@ -9,7 +9,7 @@ are the complete-backup review fixes on `agent/add-gpg-website`.
 | Side    | Revision                                  | Evidence                                                     |
 | ------- | ----------------------------------------- | ------------------------------------------------------------ |
 | Website | `agent/add-gpg-website` (PR head)         | `src/utils/backupBundle.ts`, `src/utils/backupState.ts`      |
-| Tools   | `Recovery/Tools` @ `801793c` (tools-only) | `tools/hrt-cold/bundle.go`, `tools/hrt-cold/README.md`       |
+| Tools   | `Recovery/Tools` @ `8424d6e` (tools-only) | `tools/hrt-cold/bundle.go`, `tools/hrt-cold/README.md`       |
 | Format  | —                                         | `Recovery/Tools:docs/backup-schema-audit/TOOLS_INTERFACE.md` |
 
 The Tools `hrt-cold` validator checks the hand-off envelope and container
