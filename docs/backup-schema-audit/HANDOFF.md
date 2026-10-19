@@ -562,3 +562,12 @@ browser-level regression test for P2-1.
   `localStorage` transaction.
 - Push status: pending at the time of this handoff; the final checkpoint records
   the remote SHA for `origin/agent/add-gpg-website`.
+
+### Review push checkpoint
+
+- `250eeef..01275fc` was pushed non-force to
+  `origin/agent/add-gpg-website` (fast-forward).
+- `git ls-remote origin refs/heads/agent/add-gpg-website` returned
+  `01275fc16b9d73ea7316776f886a57505debe49e`.
+- This note is a docs-only follow-up commit on the same branch; no other ref,
+  main, upstream, Tools checkout, PR, merge, or release was changed.
