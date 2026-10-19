@@ -29,7 +29,7 @@ import {
 } from '../utils/backupState';
 import { ImportActiveRecords, mergeImportedDataToStorage, processImportedDataToStorage } from '../utils/backupImport';
 import {
-    buildCompleteBackupBundleFromStorage,
+    buildCompleteBackupBundleReportFromStorage,
     inspectCompleteBackupBundle,
     mergeCompleteBackupBundleToStorage,
     type CompleteBackupActive,
@@ -731,9 +731,13 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
         calibrationHistoryMode,
     });
 
-    /** Unencrypted complete-device bundle. Encryption belongs to the Tools project. */
+    /**
+     * Unencrypted complete-device bundle plus a report of records dropped,
+     * duplicate ids collapsed, or timestamps refused by the same bounds the
+     * importer applies. Encryption belongs to the Tools project.
+     */
     const buildCompleteBackupBundle = (createdAt?: string) =>
-        buildCompleteBackupBundleFromStorage(localStorage, owner, mode, completeBackupActive(), createdAt);
+        buildCompleteBackupBundleReportFromStorage(localStorage, owner, mode, completeBackupActive(), createdAt);
 
     /** Validate and count a complete bundle without writing anything. */
     const previewCompleteBackupBundle = (parsed: unknown) =>

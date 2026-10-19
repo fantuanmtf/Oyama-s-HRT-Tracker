@@ -51,8 +51,10 @@ import {
     TOMBSTONE_TTL_MS,
     emptyTombstones,
     pruneTombstoneMap,
+    pruneTombstones,
     type ModeKey,
     type RecordKind,
+    type TombstoneMap,
     type Tombstones,
 } from './syncMerge';
 
@@ -241,6 +243,26 @@ export interface CompleteBackupMergeResult {
     preferences: PortablePreferences;
 }
 
+export type CompleteBackupOutcome = 'applied' | 'settings-only' | 'nothing';
+
+/**
+ * What the UI should report after a merge attempt. Preferences are real data
+ * even when every record category was blocked, but they are not a record
+ * merge; "nothing" means no category, scalar, or preference was applied.
+ */
+export function classifyCompleteBackupOutcome(result: CompleteBackupMergeResult): CompleteBackupOutcome {
+    if (
+        result.applied.length > 0 ||
+        result.weight !== undefined ||
+        result.pkParams !== undefined ||
+        result.calibration !== undefined
+    ) {
+        return 'applied';
+    }
+    if (Object.keys(result.preferences).length > 0) return 'settings-only';
+    return 'nothing';
+}
+
 interface Validation<T> {
     value?: T;
     error?: string;
@@ -274,10 +296,28 @@ const isFiniteNumber = (value: unknown): value is number => typeof value === 'nu
 const isRoute = (value: unknown): value is Route =>
     typeof value === 'string' && (Object.values(Route) as string[]).includes(value);
 
-const isKnownEster = (value: unknown): value is Ester =>
-    typeof value === 'string' && (Object.values(Ester) as string[]).includes(value);
-
+/**
+ * One ester rule for every record category. A newer app version may know a
+ * drug code this build does not, so a syntactically valid code is preserved
+ * instead of rejecting the category. Supplies/plan used to require a known
+ * enum value while events/templates/quick doses accepted future codes; that
+ * asymmetry made an exported bundle import differently by category.
+ */
 const isDrugCode = (value: unknown): value is Ester => typeof value === 'string' && /^[A-Za-z0-9_]{1,24}$/.test(value);
+
+/**
+ * Names that would collide with `Object.prototype` on a plain-object map.
+ * Record ids are rejected outright; tombstone maps use null-prototype objects
+ * and `Object.hasOwn`, so even a stray local value cannot inherit a timestamp.
+ */
+const FORBIDDEN_IDS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
+
+const isRecordId = (value: unknown): value is string =>
+    typeof value === 'string' && value !== '' && !FORBIDDEN_IDS.has(value);
+
+const hasOwn = (record: object, key: string): boolean => Object.prototype.hasOwnProperty.call(record, key);
+
+const nullMap = <T>(): Record<string, T> => Object.create(null) as Record<string, T>;
 
 const isStamp = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0;
 
@@ -341,7 +381,7 @@ const recordStamp = (record: unknown): number | undefined => {
 
 const validateEvent = (raw: unknown, path: string, now?: number): Validation<DoseEvent> => {
     if (!isObject(raw)) return { error: `${path}: record must be an object` };
-    if (typeof raw.id !== 'string' || raw.id === '') return { error: `${path}: id must be a non-empty string` };
+    if (!isRecordId(raw.id)) return { error: `${path}: id must be a non-empty string and not a prototype name` };
     if (!isRoute(raw.route)) return { error: `${path}: unknown route` };
     const timeH = raw.timeH;
     if (!isFiniteNumber(timeH) || timeH < EVENT_TIME_H_MIN || timeH > EVENT_TIME_H_MAX)
@@ -367,7 +407,7 @@ const validateEvent = (raw: unknown, path: string, now?: number): Validation<Dos
 
 const validateLabResult = (raw: unknown, path: string, now?: number): Validation<LabResult> => {
     if (!isObject(raw)) return { error: `${path}: record must be an object` };
-    if (typeof raw.id !== 'string' || raw.id === '') return { error: `${path}: id must be a non-empty string` };
+    if (!isRecordId(raw.id)) return { error: `${path}: id must be a non-empty string and not a prototype name` };
     if (!isFiniteNumber(raw.timeH)) return { error: `${path}: timeH must be finite` };
     if (!isFiniteNumber(raw.concValue)) return { error: `${path}: concValue must be finite` };
     if (raw.unit !== 'pg/ml' && raw.unit !== 'pmol/l' && raw.unit !== 'ng/dl' && raw.unit !== 'nmol/l')
@@ -389,7 +429,7 @@ const validateLabResult = (raw: unknown, path: string, now?: number): Validation
 
 const validateTemplate = (raw: unknown, path: string, now?: number): Validation<DoseTemplate> => {
     if (!isObject(raw)) return { error: `${path}: record must be an object` };
-    if (typeof raw.id !== 'string' || raw.id === '') return { error: `${path}: id must be a non-empty string` };
+    if (!isRecordId(raw.id)) return { error: `${path}: id must be a non-empty string and not a prototype name` };
     if (typeof raw.name !== 'string') return { error: `${path}: name must be a string` };
     if (!isRoute(raw.route)) return { error: `${path}: unknown route` };
     if (!isDrugCode(raw.ester)) return { error: `${path}: ester must be a drug code` };
@@ -414,7 +454,7 @@ const validateTemplate = (raw: unknown, path: string, now?: number): Validation<
 
 const validateQuickDose = (raw: unknown, path: string): Validation<QuickDose> => {
     if (!isObject(raw)) return { error: `${path}: record must be an object` };
-    if (typeof raw.id !== 'string' || raw.id === '') return { error: `${path}: id must be a non-empty string` };
+    if (!isRecordId(raw.id)) return { error: `${path}: id must be a non-empty string and not a prototype name` };
     if (!isRoute(raw.route)) return { error: `${path}: unknown route` };
     if (!isDrugCode(raw.ester)) return { error: `${path}: ester must be a drug code` };
     if (!isFiniteNumber(raw.value)) return { error: `${path}: value must be finite` };
@@ -458,9 +498,9 @@ const validatePack = (raw: unknown, path: string): Validation<Pack> => {
 
 const validateSupply = (raw: unknown, path: string): Validation<Supply> => {
     if (!isObject(raw)) return { error: `${path}: record must be an object` };
-    if (typeof raw.id !== 'string' || raw.id === '') return { error: `${path}: id must be a non-empty string` };
+    if (!isRecordId(raw.id)) return { error: `${path}: id must be a non-empty string and not a prototype name` };
     if (!isRoute(raw.route)) return { error: `${path}: unknown route` };
-    if (!isKnownEster(raw.ester)) return { error: `${path}: unknown ester` };
+    if (!isDrugCode(raw.ester)) return { error: `${path}: ester must be a drug code` };
     const pack = validatePack(raw.pack, `${path}.pack`);
     if (pack.value === undefined) return { error: pack.error ?? `${path}: invalid pack` };
     if (!isFiniteNumber(raw.count) || raw.count < 0) return { error: `${path}: count must be finite and >= 0` };
@@ -480,9 +520,9 @@ const validateSupply = (raw: unknown, path: string): Validation<Supply> => {
 
 const validatePlan = (raw: unknown, path: string): Validation<PlanItem> => {
     if (!isObject(raw)) return { error: `${path}: record must be an object` };
-    if (typeof raw.id !== 'string' || raw.id === '') return { error: `${path}: id must be a non-empty string` };
+    if (!isRecordId(raw.id)) return { error: `${path}: id must be a non-empty string and not a prototype name` };
     if (!isRoute(raw.route)) return { error: `${path}: unknown route` };
-    if (!isKnownEster(raw.ester)) return { error: `${path}: unknown ester` };
+    if (!isDrugCode(raw.ester)) return { error: `${path}: ester must be a drug code` };
     if (!isFiniteNumber(raw.doseMG) || raw.doseMG < 0) return { error: `${path}: doseMG must be finite and >= 0` };
     const extras = raw.extras === undefined || raw.extras === null ? {} : raw.extras;
     if (!isObject(extras)) return { error: `${path}: extras must be an object` };
@@ -548,7 +588,8 @@ interface TombstoneDrops {
     overCap: string[];
 }
 
-const formatIds = (ids: string[]): string => {
+/** UI/report form for id lists: at most five ids, then "+N more". */
+export const formatIds = (ids: string[]): string => {
     const shown = ids.slice(0, 5).join(', ');
     return ids.length > 5 ? `${shown}, +${ids.length - 5} more` : shown;
 };
@@ -566,8 +607,7 @@ const validateTombstoneMap = (
     const errors: string[] = [];
     for (const [id, at] of Object.entries(raw)) {
         if (id === '') errors.push(`${path}: tombstone id must not be empty`);
-        else if (id === '__proto__' || id === 'constructor' || id === 'prototype')
-            errors.push(`${path}: tombstone id ${id} is not allowed`);
+        else if (FORBIDDEN_IDS.has(id)) errors.push(`${path}: tombstone id ${id} is not allowed`);
         else if (!isStamp(at)) errors.push(`${path}.${id}: tombstone time must be a positive finite number`);
         else if (at > now + ALLOWED_CLOCK_SKEW_MS) drops.future.push(id);
         else if (now - at >= TOMBSTONE_TTL_MS) drops.expired.push(id);
@@ -644,6 +684,28 @@ const validateTombstones = (
         errors: [...events.errors, ...labResults.errors, ...doseTemplates.errors],
         drops: { events: events.drops, labResults: labResults.drops, doseTemplates: doseTemplates.drops },
         notes: [...events.notes, ...labResults.notes, ...doseTemplates.notes],
+    };
+};
+
+/**
+ * Local storage is less trustworthy than a validated bundle. Drop empty and
+ * prototype-named ids before any lookup, and copy into null-prototype maps so
+ * an id inherited from `Object.prototype` can never be mistaken for a
+ * tombstone.
+ */
+const readLocalTombstones = (storage: StorageLike, owner: string, mode: ModeKey): Tombstones => {
+    const raw = readTombstonesFromStorage(storage, owner, mode);
+    const clean = (map: TombstoneMap): TombstoneMap => {
+        const out = nullMap<number>();
+        for (const [id, at] of Object.entries(map)) {
+            if (id !== '' && !FORBIDDEN_IDS.has(id) && isStamp(at)) out[id] = at;
+        }
+        return out;
+    };
+    return {
+        events: clean(raw.events),
+        labResults: clean(raw.labResults),
+        doseTemplates: clean(raw.doseTemplates),
     };
 };
 
@@ -726,38 +788,151 @@ export function readPortablePreferences(storage: StorageLike): PortablePreferenc
     return values;
 }
 
-const cleanActiveRecords = <T>(
-    items: unknown[],
+export class CompleteBackupExportError extends Error {
+    readonly issues: string[];
+
+    constructor(issues: string[]) {
+        super(issues.join('; '));
+        this.name = 'CompleteBackupExportError';
+        this.issues = issues;
+    }
+}
+
+export interface CompleteBackupExportReport {
+    bundle: CompleteBackupBundle;
+    /** Invalid records or stamps dropped, duplicate ids collapsed, tombstone bounds. */
+    issues: string[];
+    /** Records present in storage but absent from the bundle. */
+    droppedRecords: number;
+    duplicateIds: string[];
+}
+
+interface CleanExportRecords<T> {
+    values: T[];
+    issues: string[];
+    droppedRecords: number;
+    duplicateIds: string[];
+}
+
+/**
+ * Apply the same entry limit, id uniqueness and future-stamp bound the importer
+ * uses. Invalid records are dropped with a report; duplicate ids are collapsed
+ * to the newest copy (last copy when stamps are unavailable) so the exported
+ * bundle cannot be rejected by this same importer.
+ */
+const cleanExportRecords = <T>(
+    items: unknown,
+    path: string,
     validator: (value: unknown, path: string, now?: number) => Validation<T>,
-): T[] => {
-    const values: T[] = [];
+    now: number,
+): CleanExportRecords<T> => {
+    if (!Array.isArray(items)) {
+        return { values: [], issues: [`${path}: expected an array`], droppedRecords: 0, duplicateIds: [] };
+    }
+    if (items.length > MAX_IMPORT_ENTRIES) {
+        throw new CompleteBackupExportError([
+            `${path}: ${items.length} entries exceeds the ${MAX_IMPORT_ENTRIES}-entry export limit`,
+        ]);
+    }
+    const issues: string[] = [];
+    const valid: { record: T; index: number }[] = [];
     items.forEach((item, index) => {
-        // No clock bound here: exporting must not silently drop a record whose
-        // device clock was ahead. Import validation applies the bound.
-        const result = validator(item, `[${index}]`);
-        if (result.value !== undefined) values.push(result.value);
+        const result = validator(item, `${path}[${index}]`, now);
+        if (result.value !== undefined) valid.push({ record: result.value, index });
+        else issues.push(result.error ?? `${path}[${index}]: invalid record`);
     });
-    return values;
+
+    const byId = new Map<string, { record: T; index: number }>();
+    const duplicateIds = new Set<string>();
+    for (const entry of valid) {
+        const id = (entry.record as unknown as { id: string }).id;
+        const existing = byId.get(id);
+        if (!existing) {
+            byId.set(id, entry);
+            continue;
+        }
+        duplicateIds.add(id);
+        const existingStamp = recordStamp(existing.record);
+        const incomingStamp = recordStamp(entry.record);
+        if (existingStamp === undefined || incomingStamp === undefined || incomingStamp >= existingStamp) {
+            byId.set(id, entry);
+        }
+    }
+    const values = [...byId.values()].sort((a, b) => a.index - b.index).map(entry => entry.record);
+    if (values.length > MAX_IMPORT_ENTRIES) {
+        throw new CompleteBackupExportError([
+            `${path}: ${values.length} unique entries exceeds the ${MAX_IMPORT_ENTRIES}-entry export limit`,
+        ]);
+    }
+    const duplicates = [...duplicateIds];
+    if (duplicates.length) issues.push(`${path}: collapsed duplicate id(s) ${formatIds(duplicates)}`);
+    const invalidRecords = items.length - valid.length;
+    if (invalidRecords > 0) issues.push(`${path}: dropped ${invalidRecords} invalid record(s)`);
+    const droppedRecords = items.length - values.length;
+    return { values, issues, droppedRecords, duplicateIds: duplicates };
 };
 
-const readStoredRecords = <T>(storage: StorageLike, owner: string, mode: ModeKey, category: ArrayCategory): T[] => {
-    const raw = loadJSONFromStorage<unknown>(storage, modeKeyFor(owner, mode, CATEGORY_SUFFIX[category]), []);
-    if (!Array.isArray(raw)) return [];
-    return cleanActiveRecords(raw, VALIDATORS[category]);
+const cleanExportTombstoneMap = (raw: TombstoneMap, path: string, now: number, issues: string[]): TombstoneMap => {
+    const live: [string, number][] = [];
+    const future: string[] = [];
+    const expired: string[] = [];
+    const invalid: string[] = [];
+    for (const [id, at] of Object.entries(raw)) {
+        if (id === '' || FORBIDDEN_IDS.has(id) || !isStamp(at)) {
+            invalid.push(id || '(empty)');
+            continue;
+        }
+        if (at > now + ALLOWED_CLOCK_SKEW_MS) future.push(id);
+        else if (now - at >= TOMBSTONE_TTL_MS) expired.push(id);
+        else live.push([id, at]);
+    }
+    if (invalid.length) issues.push(`${path}: dropped invalid tombstone id(s) ${formatIds(invalid)}`);
+    if (future.length) issues.push(`${path}: dropped ${future.length} tombstone(s) newer than the allowed clock skew`);
+    if (expired.length) issues.push(`${path}: dropped ${expired.length} tombstone(s) older than the 180-day TTL`);
+    if (live.length > TOMBSTONE_MAX_PER_KIND) {
+        live.sort((a, b) => b[1] - a[1]);
+        const overCap = live.slice(TOMBSTONE_MAX_PER_KIND).map(([id]) => id);
+        live.length = TOMBSTONE_MAX_PER_KIND;
+        issues.push(`${path}: dropped ${overCap.length} tombstone(s) above the ${TOMBSTONE_MAX_PER_KIND}-per-kind cap`);
+    }
+    return Object.fromEntries(live);
+};
+
+const cleanExportTombstones = (raw: Tombstones, path: string, now: number, issues: string[]): Tombstones => ({
+    events: cleanExportTombstoneMap(raw.events, `${path}.events`, now, issues),
+    labResults: cleanExportTombstoneMap(raw.labResults, `${path}.labResults`, now, issues),
+    doseTemplates: cleanExportTombstoneMap(raw.doseTemplates, `${path}.doseTemplates`, now, issues),
+});
+
+const readBoundedStampString = (
+    value: string | null,
+    path: string,
+    now: number,
+    issues: string[],
+): number | undefined => {
+    const stamp = readStampString(value);
+    if (stamp === undefined) return undefined;
+    if (stamp > now + ALLOWED_CLOCK_SKEW_MS) {
+        issues.push(`${path}: dropped timestamp in the future beyond the allowed clock skew`);
+        return undefined;
+    }
+    return stamp;
 };
 
 /**
  * Build a complete bundle from the current store, overlaying the active mode's
- * in-memory arrays (which can be newer than the persisted copy).
+ * in-memory arrays (which can be newer than the persisted copy). The report
+ * lists every record or stamp that could not be exported.
  */
-export function buildCompleteBackupBundleFromStorage(
+export function buildCompleteBackupBundleReportFromStorage(
     storage: StorageLike,
     owner: string,
     activeMode: ModeKey,
     active: CompleteBackupActive,
     createdAt = new Date().toISOString(),
-): CompleteBackupBundle {
-    const activeArrays: Record<ArrayCategory, unknown[]> = {
+    now = Date.now(),
+): CompleteBackupExportReport {
+    const activeArrays: Record<ArrayCategory, unknown> = {
         events: active.events,
         labResults: active.labResults,
         doseTemplates: active.doseTemplates,
@@ -765,26 +940,58 @@ export function buildCompleteBackupBundleFromStorage(
         supplies: active.supplies,
         plan: active.plan,
     };
+    const envelopeIssues: string[] = [];
+    if (!isIsoDate(createdAt)) envelopeIssues.push('createdAt must be an ISO date string');
+    if (!isCalibrationMethodValue(active.calibrationMethod)) envelopeIssues.push('calibration.method is invalid');
+    if (!isCalibrationHistoryMode(active.calibrationHistoryMode)) {
+        envelopeIssues.push('calibration.historyMode is invalid');
+    }
+    if (envelopeIssues.length) throw new CompleteBackupExportError(envelopeIssues);
+
+    const issues: string[] = [];
+    const duplicateIds = new Set<string>();
+    let droppedRecords = 0;
 
     const readMode = (mode: ModeKey): CompleteBackupMode => {
         const block: CompleteBackupMode = {};
         for (const category of ARRAY_CATEGORIES) {
-            block[category] =
+            const path = `${mode}.${category}`;
+            const raw =
                 mode === activeMode
-                    ? cleanActiveRecords(activeArrays[category], VALIDATORS[category])
-                    : readStoredRecords(storage, owner, mode, category);
+                    ? activeArrays[category]
+                    : loadJSONFromStorage<unknown>(storage, modeKeyFor(owner, mode, CATEGORY_SUFFIX[category]), []);
+            const cleaned = cleanExportRecords(raw, path, VALIDATORS[category], now);
+            block[category] = cleaned.values;
+            issues.push(...cleaned.issues);
+            droppedRecords += cleaned.droppedRecords;
+            cleaned.duplicateIds.forEach(id => duplicateIds.add(id));
         }
-        block.deletions = readTombstonesFromStorage(storage, owner, mode);
+        block.deletions = cleanExportTombstones(
+            readLocalTombstones(storage, owner, mode),
+            `${mode}.deletions`,
+            now,
+            issues,
+        );
         return block;
     };
 
     const weightKey = nsFor(owner, 'weight');
-    const weightUpdatedAt = readStampString(storage.getItem(nsFor(owner, 'weight-at')));
+    const weightUpdatedAt = readBoundedStampString(
+        storage.getItem(nsFor(owner, 'weight-at')),
+        'weightUpdatedAt',
+        now,
+        issues,
+    );
     const weight =
         storage.getItem(weightKey) !== null && isPlausibleBodyWeightKG(active.weight) ? active.weight : undefined;
 
     const pkKey = nsFor(owner, 'pk-params');
-    const pkUpdatedAt = readStampString(storage.getItem(nsFor(owner, 'pk-params-at')));
+    const pkUpdatedAt = readBoundedStampString(
+        storage.getItem(nsFor(owner, 'pk-params-at')),
+        'pkParamsUpdatedAt',
+        now,
+        issues,
+    );
     let pkParams: PKCustomParams | null | undefined;
     if (storage.getItem(pkKey) !== null || active.pkParams !== null) {
         const saved = loadJSONFromStorage<unknown>(storage, pkKey, null);
@@ -796,21 +1003,38 @@ export function buildCompleteBackupBundleFromStorage(
     }
 
     return {
-        format: COMPLETE_BACKUP_FORMAT,
-        formatVersion: COMPLETE_BACKUP_FORMAT_VERSION,
-        createdAt,
-        mode: activeMode,
-        modes: { transfem: readMode('transfem'), transmasc: readMode('transmasc') },
-        ...(weight !== undefined ? { weight } : {}),
-        ...(weightUpdatedAt !== undefined ? { weightUpdatedAt } : {}),
-        ...(pkParams !== undefined ? { pkParams } : {}),
-        ...(pkUpdatedAt !== undefined ? { pkParamsUpdatedAt: pkUpdatedAt } : {}),
-        calibration: {
-            method: active.calibrationMethod,
-            historyMode: active.calibrationHistoryMode,
+        bundle: {
+            format: COMPLETE_BACKUP_FORMAT,
+            formatVersion: COMPLETE_BACKUP_FORMAT_VERSION,
+            createdAt,
+            mode: activeMode,
+            modes: { transfem: readMode('transfem'), transmasc: readMode('transmasc') },
+            ...(weight !== undefined ? { weight } : {}),
+            ...(weightUpdatedAt !== undefined ? { weightUpdatedAt } : {}),
+            ...(pkParams !== undefined ? { pkParams } : {}),
+            ...(pkUpdatedAt !== undefined ? { pkParamsUpdatedAt: pkUpdatedAt } : {}),
+            calibration: {
+                method: active.calibrationMethod,
+                historyMode: active.calibrationHistoryMode,
+            },
+            preferences: readPortablePreferences(storage),
         },
-        preferences: readPortablePreferences(storage),
+        issues,
+        droppedRecords,
+        duplicateIds: [...duplicateIds],
     };
+}
+
+/** Bundle-only wrapper for callers that do not need the export report. */
+export function buildCompleteBackupBundleFromStorage(
+    storage: StorageLike,
+    owner: string,
+    activeMode: ModeKey,
+    active: CompleteBackupActive,
+    createdAt = new Date().toISOString(),
+    now = Date.now(),
+): CompleteBackupBundle {
+    return buildCompleteBackupBundleReportFromStorage(storage, owner, activeMode, active, createdAt, now).bundle;
 }
 
 interface ParsedBundle {
@@ -1088,11 +1312,12 @@ const planDeletions = (
     const block = parsed.modes[mode];
     if (!block?.deletions) return undefined;
 
-    const localTombstones = readTombstonesFromStorage(context.storage, context.owner, mode);
+    const localTombstones = readLocalTombstones(context.storage, context.owner, mode);
     const kinds = {} as Record<RecordKind, KindDeletionPlan>;
     const tombstones = emptyTombstones();
     const impacts: CompleteBackupDeletionImpact[] = [];
     const conflicts: string[] = [];
+    let writeNeeded = false;
 
     for (const kind of RECORD_KINDS) {
         const category = KIND_CATEGORY[kind];
@@ -1103,7 +1328,7 @@ const planDeletions = (
         const incomingById = recordsById(incomingRecords);
         const incomingMap = block.deletions[kind];
         const parseDrops = parsed.tombstoneDrops[path] ?? { future: [], expired: [], overCap: [] };
-        const accepted: Record<string, number> = {};
+        const accepted = nullMap<number>();
         const protectedIds: string[] = [];
         const droppedIncomingIds = [...parseDrops.future, ...parseDrops.expired, ...parseDrops.overCap];
 
@@ -1134,32 +1359,32 @@ const planDeletions = (
             }
         }
 
-        const candidate: Record<string, number> = { ...localTombstones[kind] };
+        const candidate = Object.assign(nullMap<number>(), localTombstones[kind]);
         for (const [id, at] of Object.entries(accepted)) {
-            candidate[id] = Math.max(candidate[id] ?? 0, at);
+            const existing = hasOwn(candidate, id) ? candidate[id] : 0;
+            candidate[id] = Math.max(existing, at);
         }
         const finalMap = pruneTombstoneMap(candidate, now);
         for (const id of Object.keys(accepted)) {
-            if (finalMap[id] === undefined) {
+            if (!hasOwn(finalMap, id)) {
                 droppedIncomingIds.push(id);
                 conflicts.push(`${path}: tombstone for ${id} was not retained after TTL/cap bounds`);
             }
         }
-        const droppedLocal = Object.keys(candidate).filter(
-            id => finalMap[id] === undefined && accepted[id] === undefined,
-        );
+        const droppedLocal = Object.keys(candidate).filter(id => !hasOwn(finalMap, id) && !hasOwn(accepted, id));
         if (droppedLocal.length) {
             conflicts.push(`${path}: dropped ${droppedLocal.length} local tombstone(s) outside the TTL/cap bounds`);
         }
 
         const removedLocalIds: string[] = [];
         for (const id of Object.keys(accepted)) {
-            if (finalMap[id] !== undefined && localById.has(id) && !protectedIds.includes(id)) {
+            if (hasOwn(finalMap, id) && localById.has(id) && !protectedIds.includes(id)) {
                 removedLocalIds.push(id);
             }
         }
 
-        const retainedAccepted = Object.keys(accepted).filter(id => finalMap[id] !== undefined).length;
+        const retainedAccepted = Object.keys(accepted).filter(id => hasOwn(finalMap, id)).length;
+        if (retainedAccepted > 0) writeNeeded = true;
         const rawIncoming =
             parsed.categoryCounts[path] ??
             parseDrops.future.length +
@@ -1181,7 +1406,7 @@ const planDeletions = (
         });
     }
 
-    return { tombstones, kinds, impacts, writeNeeded: true, conflicts };
+    return { tombstones, kinds, impacts, writeNeeded, conflicts };
 };
 
 interface CategoryMergePlan {
@@ -1241,7 +1466,26 @@ const planCategoryMerge = (
     let skipped = 0;
 
     for (const record of incoming) {
-        const localTombstoneAt = kind ? localTombstones[kind][record.id] : undefined;
+        const kindTombstones = kind ? localTombstones[kind] : undefined;
+        const localTombstoneAt =
+            kindTombstones && hasOwn(kindTombstones, record.id) ? kindTombstones[record.id] : undefined;
+
+        if (
+            kind &&
+            deletionPlan &&
+            hasOwn(deletionPlan.kinds[kind].accepted, record.id) &&
+            hasOwn(deletionPlan.kinds[kind].finalMap, record.id)
+        ) {
+            // planDeletions only accepts a tombstone when the record in the same
+            // bundle is not newer, so the surviving incoming tombstone wins.
+            // Report the contradiction instead of dropping the record silently.
+            skipped++;
+            conflicts.push(
+                `${path}: bundle contains id ${record.id} as both a record and a tombstone; the tombstone wins and the record was not restored`,
+            );
+            continue;
+        }
+
         if (localTombstoneAt !== undefined) {
             const incomingStamp = recordStamp(record);
             if (incomingStamp === undefined || incomingStamp <= localTombstoneAt) {
@@ -1255,17 +1499,6 @@ const planCategoryMerge = (
             conflicts.push(
                 `${path}: id ${record.id} is newer than the local deletion; incoming record restored and tombstone cleared`,
             );
-        }
-
-        if (
-            kind &&
-            deletionPlan?.kinds[kind]?.accepted[record.id] !== undefined &&
-            deletionPlan.kinds[kind].finalMap[record.id] !== undefined
-        ) {
-            // planDeletions only accepts a tombstone when the record in the same
-            // bundle is not newer, so the surviving incoming tombstone wins.
-            skipped++;
-            continue;
         }
 
         const existing = localById.get(record.id);
@@ -1463,9 +1696,13 @@ const reconcileBundle = (parsed: ParsedBundle, context: CompleteBackupContext, n
     for (const mode of MODE_KEYS) {
         const block = parsed.modes[mode];
         const categories: Partial<Record<ArrayCategory, CategoryMergePlan>> = {};
-        const localTombstonesBefore = readTombstonesFromStorage(context.storage, context.owner, mode);
+        const localTombstonesBefore = readLocalTombstones(context.storage, context.owner, mode);
+        // Expired local tombstones are not authoritative: a row past its TTL
+        // must not keep an older incoming record from being restored.
+        const localTombstonesPruned = pruneTombstones(localTombstonesBefore, now);
         let tombstones = localTombstonesBefore;
         let writeTombstones = false;
+        let clearedAnyTombstone = false;
         const deletionPlan = planDeletions(parsed, context, mode, now, blocked);
         if (deletionPlan) {
             tombstones = deletionPlan.tombstones;
@@ -1474,6 +1711,12 @@ const reconcileBundle = (parsed: ParsedBundle, context: CompleteBackupContext, n
             deletionImpact.push(...deletionPlan.impacts);
             removed += deletionPlan.impacts.reduce((total, impact) => total + impact.removedLocal, 0);
         }
+        const acceptedTombstonesRemain = (): boolean =>
+            RECORD_KINDS.some(kind => {
+                const kindPlan = deletionPlan?.kinds[kind];
+                if (!kindPlan) return false;
+                return Object.keys(kindPlan.accepted).some(id => hasOwn(kindPlan.finalMap, id));
+            });
 
         if (block) {
             for (const category of ARRAY_CATEGORIES) {
@@ -1484,7 +1727,7 @@ const reconcileBundle = (parsed: ParsedBundle, context: CompleteBackupContext, n
                 const duplicates = duplicateIds(incoming);
                 if (duplicates.length) {
                     blocked.add(path);
-                    issues.push(`${path}: duplicate id ${duplicates.join(', ')}`);
+                    issues.push(`${path}: duplicate id ${formatIds(duplicates)}`);
                     continue;
                 }
                 const result = planCategoryMerge(
@@ -1492,7 +1735,7 @@ const reconcileBundle = (parsed: ParsedBundle, context: CompleteBackupContext, n
                     mode,
                     category,
                     incoming,
-                    readTombstonesFromStorage(context.storage, context.owner, mode),
+                    localTombstonesPruned,
                     deletionPlan,
                     path,
                 );
@@ -1535,6 +1778,7 @@ const reconcileBundle = (parsed: ParsedBundle, context: CompleteBackupContext, n
                 for (const id of plan.clearedTombstoneIds) {
                     delete tombstones[kind][id];
                     writeTombstones = true;
+                    clearedAnyTombstone = true;
                 }
             }
 
@@ -1548,7 +1792,9 @@ const reconcileBundle = (parsed: ParsedBundle, context: CompleteBackupContext, n
                 const acceptedIds = Object.keys(kindPlan.accepted);
                 if (acceptedIds.length === 0) continue;
                 for (const id of acceptedIds) {
-                    const original = localTombstonesBefore[kind][id];
+                    const original = hasOwn(localTombstonesBefore[kind], id)
+                        ? localTombstonesBefore[kind][id]
+                        : undefined;
                     if (original === undefined) delete tombstones[kind][id];
                     else tombstones[kind][id] = original;
                 }
@@ -1562,7 +1808,7 @@ const reconcileBundle = (parsed: ParsedBundle, context: CompleteBackupContext, n
                 removed -= kindPlan.removedLocalIds.length;
                 kindPlan.accepted = {};
                 kindPlan.removedLocalIds = [];
-                writeTombstones = true;
+                writeTombstones = clearedAnyTombstone || acceptedTombstonesRemain();
             }
         } else {
             // Envelope/mode-level errors skip this mode entirely; still record
@@ -1630,6 +1876,36 @@ export function inspectCompleteBackupBundle(raw: unknown, context: CompleteBacku
         deletionImpact: reconciled.deletionImpact,
         scalars: reconciled.scalars,
     };
+}
+
+/**
+ * Stable comparison for a preview taken when a dialog opened and a fresh
+ * preview taken when the user confirms. If this changes, the user is shown the
+ * new counts/conflicts before anything is written.
+ */
+export function completeBackupPreviewFingerprint(preview: CompleteBackupPreview): string {
+    return JSON.stringify({
+        ok: preview.ok,
+        errors: preview.errors,
+        formatVersion: preview.formatVersion,
+        createdAt: preview.createdAt,
+        sourceMode: preview.sourceMode,
+        currentMode: preview.currentMode,
+        counts: preview.counts,
+        missing: [...preview.missing].sort(),
+        blocked: [...preview.blocked].sort(),
+        issues: preview.issues,
+        conflicts: preview.conflicts,
+        stats: preview.stats,
+        preferences: preview.preferences,
+        calibration: preview.calibration,
+        weight: preview.weight,
+        weightUpdatedAt: preview.weightUpdatedAt,
+        pkParams: preview.pkParams,
+        pkParamsUpdatedAt: preview.pkParamsUpdatedAt,
+        deletionImpact: preview.deletionImpact,
+        scalars: preview.scalars,
+    });
 }
 
 interface PlannedWrite {

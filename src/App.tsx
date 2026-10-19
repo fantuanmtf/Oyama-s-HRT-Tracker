@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation, LanguageProvider } from './contexts/LanguageContext';
 import { useDialog, DialogProvider } from './contexts/DialogContext';
 import { HRTModeProvider, useHRTMode } from './contexts/HRTModeContext';
@@ -10,7 +10,14 @@ import { v4 as uuidv4 } from 'uuid';
 import { PlanItem, planEvent } from './utils/plan';
 import Plan from './pages/Plan';
 import { parseCloudBackup } from './utils/cloudBackup';
-import { COMPLETE_BACKUP_FORMAT, type CompleteBackupPreview, type PortablePreferences } from './utils/backupBundle';
+import {
+    COMPLETE_BACKUP_FORMAT,
+    classifyCompleteBackupOutcome,
+    completeBackupPreviewFingerprint,
+    formatIds,
+    type CompleteBackupPreview,
+    type PortablePreferences,
+} from './utils/backupBundle';
 import { describeCompleteBackupAccountWarning, describeCompleteBackupExportWarning } from './utils/backupWarnings';
 import { useAppData } from './hooks/useAppData';
 import { useAppNavigation, tabForView, ViewKey } from './hooks/useAppNavigation';
@@ -220,6 +227,22 @@ const AppContent = () => {
         if (prefs['app-hide-site-label'] !== undefined) setHideSiteLabel(prefs['app-hide-site-label']);
         if (prefs['hrt-supply-lead-days'] !== undefined) setSupplyLeadDays(prefs['hrt-supply-lead-days']);
     };
+
+    // Dialogs stay open across renders, so their callbacks must not keep the
+    // arrays/functions captured when the dialog opened. Every confirm path
+    // re-previews and applies through this latest snapshot instead.
+    const completeBackupRef = useRef({
+        preview: previewCompleteBackupBundle,
+        apply: applyCompleteBackupBundle,
+        build: buildCompleteBackupBundle,
+    });
+    useEffect(() => {
+        completeBackupRef.current = {
+            preview: previewCompleteBackupBundle,
+            apply: applyCompleteBackupBundle,
+            build: buildCompleteBackupBundle,
+        };
+    });
     // Same reading as the Overview's: an explicit dark theme, or the system's under "system".
     const isDarkMode =
         theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
@@ -374,9 +397,9 @@ const AppContent = () => {
             lines.push(`${t('import.bundle_deletions')}:`);
             for (const impact of deletionLines) {
                 let line = `  ${impact.mode}.${impact.kind}: ${impact.incoming} incoming, ${impact.removedLocal} local removed`;
-                if (impact.removedIds.length) line += ` (${impact.removedIds.join(', ')})`;
-                if (impact.protectedIds.length) line += `; kept local ${impact.protectedIds.join(', ')}`;
-                if (impact.droppedIds.length) line += `; rejected ${impact.droppedIds.join(', ')}`;
+                if (impact.removedIds.length) line += ` (${formatIds(impact.removedIds)})`;
+                if (impact.protectedIds.length) line += `; kept local ${formatIds(impact.protectedIds)}`;
+                if (impact.droppedIds.length) line += `; rejected ${formatIds(impact.droppedIds)}`;
                 lines.push(line);
             }
         }
@@ -424,16 +447,18 @@ const AppContent = () => {
      */
     const confirmCompleteBackupImport = (parsed: unknown): Promise<boolean> =>
         new Promise(resolve => {
-            const preview = previewCompleteBackupBundle(parsed);
+            const preview = completeBackupRef.current.preview(parsed);
             if (!preview.ok) {
                 showDialog('alert', `${t('import.bundle_invalid')}\n${preview.errors.join('\n')}`);
                 resolve(false);
                 return;
             }
+
             const run = () => {
                 try {
-                    const result = applyCompleteBackupBundle(parsed);
-                    if (result.applied.length === 0) {
+                    const result = completeBackupRef.current.apply(parsed);
+                    const outcome = classifyCompleteBackupOutcome(result);
+                    if (outcome === 'nothing') {
                         showDialog(
                             'alert',
                             `${t('import.bundle_merge_failed')}\n${t('import.bundle_blocked')}: ${result.blocked.join(', ')}`,
@@ -442,6 +467,14 @@ const AppContent = () => {
                         return;
                     }
                     applyPortablePreferences(result.preferences);
+                    if (outcome === 'settings-only') {
+                        const blocked = result.blocked.length
+                            ? `\n${t('import.bundle_blocked')}: ${result.blocked.join(', ')}`
+                            : '';
+                        showDialog('alert', `${t('import.bundle_settings_only')}${blocked}`);
+                        resolve(true);
+                        return;
+                    }
                     const message = (
                         result.blocked.length
                             ? t('import.bundle_merge_success_blocked')
@@ -459,26 +492,67 @@ const AppContent = () => {
                     resolve(false);
                 }
             };
-            const confirmMerge = () => {
-                if (preview.scalars.calibration?.action !== 'overwrite') {
-                    run();
-                    return;
-                }
-                // Calibration changes how PK estimates are interpreted. It gets
-                // its own explicit confirmation instead of riding on the merge.
-                showDialog('confirm', t('import.bundle_calibration_confirm'), run, {
-                    danger: true,
-                    title: t('import.bundle_calibration_confirm_title'),
-                    confirmLabel: t('import.bundle_calibration_confirm_btn'),
-                    onCancel: () => resolve(false),
-                });
+
+            const openPreview = (current: CompleteBackupPreview) => {
+                showDialog(
+                    'confirm',
+                    describeCompleteBackupPreview(current),
+                    () => {
+                        // The active arrays can change while a dialog is open.
+                        // Recompute at confirm time; if the visible outcome
+                        // changed, show it again instead of applying stale consent.
+                        const latest = completeBackupRef.current.preview(parsed);
+                        if (!latest.ok) {
+                            showDialog('alert', `${t('import.bundle_invalid')}\n${latest.errors.join('\n')}`);
+                            resolve(false);
+                            return;
+                        }
+                        if (completeBackupPreviewFingerprint(latest) !== completeBackupPreviewFingerprint(current)) {
+                            openPreview(latest);
+                            return;
+                        }
+                        if (latest.scalars.calibration?.action !== 'overwrite') {
+                            run();
+                            return;
+                        }
+                        // Calibration changes how PK estimates are interpreted.
+                        // It gets its own explicit confirmation instead of
+                        // riding on the merge. Apply re-previews again, so a
+                        // change during this dialog cannot bypass the latest
+                        // conflict/block decisions.
+                        showDialog(
+                            'confirm',
+                            t('import.bundle_calibration_confirm'),
+                            () => {
+                                const finalPreview = completeBackupRef.current.preview(parsed);
+                                if (!finalPreview.ok) {
+                                    showDialog(
+                                        'alert',
+                                        `${t('import.bundle_invalid')}\n${finalPreview.errors.join('\n')}`,
+                                    );
+                                    resolve(false);
+                                    return;
+                                }
+                                run();
+                            },
+                            {
+                                danger: true,
+                                title: t('import.bundle_calibration_confirm_title'),
+                                confirmLabel: t('import.bundle_calibration_confirm_btn'),
+                                onCancel: () => resolve(false),
+                            },
+                        );
+                    },
+                    {
+                        danger: true,
+                        title: t('import.bundle_preview_title'),
+                        confirmLabel: t('import.bundle_merge_btn'),
+                        onCancel: () => resolve(false),
+                    },
+                );
             };
-            showDialog('confirm', describeCompleteBackupPreview(preview), confirmMerge, {
-                danger: true,
-                title: t('import.bundle_preview_title'),
-                confirmLabel: t('import.bundle_merge_btn'),
-                onCancel: () => resolve(false),
-            });
+
+            openPreview(preview);
         });
 
     const importEventsFromJson = async (text: string): Promise<boolean> => {
@@ -616,11 +690,22 @@ const AppContent = () => {
             'confirm',
             warning.message,
             () => {
-                const bundle = buildCompleteBackupBundle();
-                downloadFile(
-                    JSON.stringify(bundle, null, 2),
-                    `hrt-complete-backup-${new Date().toISOString().split('T')[0]}.json`,
-                );
+                try {
+                    // Build at confirm time, not when the dialog opened: the
+                    // arrays may have changed while the warning was on screen.
+                    const report = completeBackupRef.current.build();
+                    downloadFile(
+                        JSON.stringify(report.bundle, null, 2),
+                        `hrt-complete-backup-${new Date().toISOString().split('T')[0]}.json`,
+                    );
+                    if (report.issues.length) {
+                        showDialog('alert', `${t('export.complete_skipped')}\n${report.issues.join('\n')}`);
+                    }
+                } catch (err) {
+                    console.error(err);
+                    const detail = err instanceof Error && err.message ? `\n${err.message}` : '';
+                    showDialog('alert', `${t('export.complete_failed')}${detail}`);
+                }
             },
             {
                 danger: true,
@@ -667,7 +752,7 @@ const AppContent = () => {
             return;
         }
         try {
-            let parsed: any;
+            let parsed: unknown;
             let timestamp: number;
             if (backupId) {
                 const backup = await cloudService.loadOne(token, backupId);

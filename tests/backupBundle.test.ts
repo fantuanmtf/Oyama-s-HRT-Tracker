@@ -4,10 +4,15 @@ import {
     ALLOWED_CLOCK_SKEW_MS,
     COMPLETE_BACKUP_FORMAT,
     COMPLETE_BACKUP_FORMAT_VERSION,
+    CompleteBackupExportError,
     PARTIAL_WRITE_MESSAGE,
     PLAN_EVERY_DAYS_MAX,
     PLAN_TIMES_PER_DAY_MAX,
     buildCompleteBackupBundleFromStorage,
+    buildCompleteBackupBundleReportFromStorage,
+    classifyCompleteBackupOutcome,
+    completeBackupPreviewFingerprint,
+    formatIds,
     inspectCompleteBackupBundle,
     mergeCompleteBackupBundleToStorage,
     readPortablePreferences,
@@ -212,7 +217,10 @@ const context = (
 ): CompleteBackupContext => ({ storage, owner: OWNER, mode, active, now: NOW });
 
 const build = (storage: MemoryStorage, mode: ModeKey = 'transfem'): CompleteBackupBundle =>
-    buildCompleteBackupBundleFromStorage(storage, OWNER, mode, activeFrom(storage, mode), CREATED_AT);
+    buildCompleteBackupBundleFromStorage(storage, OWNER, mode, activeFrom(storage, mode), CREATED_AT, NOW);
+
+const buildReport = (storage: MemoryStorage, mode: ModeKey = 'transfem') =>
+    buildCompleteBackupBundleReportFromStorage(storage, OWNER, mode, activeFrom(storage, mode), CREATED_AT, NOW);
 
 describe('complete backup bundle data layer', () => {
     it('round-trips both modes, all Supply.pack branches, calibration, scalars, and preferences', () => {
@@ -784,5 +792,278 @@ describe('complete backup bundle data layer', () => {
         expect(result.calibration).toEqual({ method: 'ekf', historyMode: 'forward' });
         expect(target.getItem('hrt-cal-method')).toBe('ekf');
         expect(target.getItem('hrt-cal-history-mode')).toBe('forward');
+    });
+
+    it('does not let an expired local tombstone block an older incoming record', () => {
+        const tombstoneAt = NOW - TOMBSTONE_TTL_MS - 1;
+        const local = new MemoryStorage();
+        local.setItem(key('transfem', 'events'), JSON.stringify([]));
+        local.setItem(
+            key('transfem', 'deletions'),
+            JSON.stringify({ events: { revived: tombstoneAt }, labResults: {}, doseTemplates: {} }),
+        );
+
+        const bundle = build(seed());
+        bundle.modes.transfem.events = [event('revived', { updatedAt: tombstoneAt - 1_000 })];
+        bundle.modes.transfem.labResults = [];
+        bundle.modes.transfem.doseTemplates = [];
+        bundle.modes.transfem.deletions = { events: {}, labResults: {}, doseTemplates: {} };
+
+        const preview = inspectCompleteBackupBundle(bundle, context(local));
+        expect(preview.blocked).not.toContain('transfem.events');
+        expect(preview.conflicts.join(' ')).not.toContain('hidden by a local deletion');
+
+        const result = mergeCompleteBackupBundleToStorage(bundle, context(local));
+        const events = JSON.parse(local.getItem(key('transfem', 'events'))!) as { id: string }[];
+        expect(events.map(item => item.id)).toContain('revived');
+        expect(result.applied).toContain('transfem.events');
+    });
+
+    it('rejects prototype-named record and tombstone ids instead of inheriting a value', () => {
+        const protoRecord = build(seed());
+        protoRecord.modes.transfem.events = [event('__proto__')];
+        const protoPreview = inspectCompleteBackupBundle(protoRecord, context(new MemoryStorage()));
+        expect(protoPreview.blocked).toContain('transfem.events');
+        expect(protoPreview.issues.join(' ')).toContain('prototype name');
+
+        const constructorRecord = build(seed());
+        constructorRecord.modes.transfem.events = [event('constructor')];
+        const constructorPreview = inspectCompleteBackupBundle(constructorRecord, context(new MemoryStorage()));
+        expect(constructorPreview.blocked).toContain('transfem.events');
+
+        const protoTombstone = build(seed());
+        protoTombstone.modes.transfem.deletions = {
+            events: { constructor: NOW - 1_000 },
+            labResults: {},
+            doseTemplates: {},
+        };
+        const tombstonePreview = inspectCompleteBackupBundle(protoTombstone, context(new MemoryStorage()));
+        expect(tombstonePreview.blocked).toContain('transfem.deletions');
+        expect(tombstonePreview.issues.join(' ')).toContain('not allowed');
+
+        // A local `constructor` key must not make an unrelated id look deleted.
+        const local = new MemoryStorage();
+        local.setItem(key('transfem', 'events'), JSON.stringify([]));
+        local.setItem(
+            key('transfem', 'deletions'),
+            JSON.stringify({ events: { constructor: NOW - 1_000 }, labResults: {}, doseTemplates: {} }),
+        );
+        const inherited = build(seed());
+        inherited.modes.transfem.events = [event('toString', { updatedAt: NOW - 2_000 })];
+        inherited.modes.transfem.labResults = [];
+        inherited.modes.transfem.doseTemplates = [];
+        inherited.modes.transfem.deletions = { events: {}, labResults: {}, doseTemplates: {} };
+        const inheritedPreview = inspectCompleteBackupBundle(inherited, context(local));
+        expect(inheritedPreview.conflicts.join(' ')).not.toContain('hidden by a local deletion');
+        mergeCompleteBackupBundleToStorage(inherited, context(local));
+        const events = JSON.parse(local.getItem(key('transfem', 'events'))!) as { id: string }[];
+        expect(events.map(item => item.id)).toContain('toString');
+    });
+
+    it('exports duplicate ids once and reports the collapsed id', () => {
+        const storage = seed();
+        storage.setItem(
+            key('transfem', 'events'),
+            JSON.stringify([
+                event('tf-e1', { doseMG: 1, updatedAt: 1_000 }),
+                event('tf-e1', { doseMG: 9, updatedAt: 2_000 }),
+            ]),
+        );
+
+        const report = buildReport(storage);
+        expect(report.duplicateIds).toEqual(['tf-e1']);
+        expect(report.issues.join(' ')).toContain('duplicate id');
+        expect(report.droppedRecords).toBe(1);
+        expect(report.bundle.modes.transfem.events).toHaveLength(1);
+        expect(report.bundle.modes.transfem.events?.[0].doseMG).toBe(9);
+
+        const preview = inspectCompleteBackupBundle(report.bundle, context(new MemoryStorage()));
+        expect(preview.blocked).toEqual([]);
+        const target = new MemoryStorage();
+        mergeCompleteBackupBundleToStorage(report.bundle, context(target));
+        expect(JSON.parse(target.getItem(key('transfem', 'events'))!)).toHaveLength(1);
+    });
+
+    it('refuses to export a category above the shared import entry limit', () => {
+        const storage = seed();
+        storage.setItem(
+            key('transfem', 'events'),
+            JSON.stringify(Array.from({ length: MAX_IMPORT_ENTRIES + 1 }, (_, index) => event(`bulk-${index}`))),
+        );
+        expect(() => buildReport(storage)).toThrow(CompleteBackupExportError);
+        expect(() => buildReport(storage)).toThrow(new RegExp(`${MAX_IMPORT_ENTRIES}-entry export limit`));
+    });
+
+    it('drops invalid records on export with a report so the bundle still imports', () => {
+        const storage = seed();
+        storage.setItem(
+            key('transfem', 'events'),
+            JSON.stringify([event('good'), { id: 'bad', route: 'not-a-route' }]),
+        );
+
+        const report = buildReport(storage);
+        expect(report.droppedRecords).toBe(1);
+        expect(report.issues.join(' ')).toContain('unknown route');
+        expect(report.bundle.modes.transfem.events?.map(item => item.id)).toEqual(['good']);
+        const preview = inspectCompleteBackupBundle(report.bundle, context(new MemoryStorage()));
+        expect(preview.blocked).toEqual([]);
+    });
+
+    it('uses one cross-version ester rule for events, templates, quick doses, supplies and plan', () => {
+        const storage = seed();
+        const futureEster = 'FUTURE1';
+        storage.setItem(key('transfem', 'events'), JSON.stringify([event('cross-e', { ester: futureEster })]));
+        storage.setItem(
+            key('transfem', 'dose-templates'),
+            JSON.stringify([template('cross-t', { ester: futureEster })]),
+        );
+        storage.setItem(
+            key('transfem', 'quick-doses'),
+            JSON.stringify([{ ...quickDose('cross-q'), ester: futureEster }]),
+        );
+        storage.setItem(
+            key('transfem', 'supplies'),
+            JSON.stringify([supply('cross-s', packs()[0], { ester: futureEster })]),
+        );
+        storage.setItem(key('transfem', 'plan'), JSON.stringify([plan('cross-p', { ester: futureEster })]));
+
+        const report = buildReport(storage);
+        expect(report.issues).toEqual([]);
+        const preview = inspectCompleteBackupBundle(report.bundle, context(new MemoryStorage()));
+        expect(preview.blocked).toEqual([]);
+
+        const target = new MemoryStorage();
+        mergeCompleteBackupBundleToStorage(report.bundle, context(target));
+        for (const suffix of ['events', 'dose-templates', 'quick-doses', 'supplies', 'plan']) {
+            const records = JSON.parse(target.getItem(key('transfem', suffix))!) as { ester: string }[];
+            expect(records.some(record => record.ester === futureEster)).toBe(true);
+        }
+    });
+
+    it('applies the import future-stamp bound on export and reports dropped stamps', () => {
+        const storage = seed();
+        const future = NOW + ALLOWED_CLOCK_SKEW_MS + 1;
+        storage.setItem(
+            key('transfem', 'events'),
+            JSON.stringify([event('past'), event('future', { updatedAt: future })]),
+        );
+        storage.setItem(
+            key('transfem', 'deletions'),
+            JSON.stringify({ events: { live: NOW - 1_000, future: future }, labResults: {}, doseTemplates: {} }),
+        );
+        storage.setItem('hrt-weight-at', String(future));
+        storage.setItem('hrt-pk-params-at', String(future));
+
+        const report = buildReport(storage);
+        expect(report.bundle.modes.transfem.events?.map(item => item.id)).toEqual(['past']);
+        expect(report.bundle.modes.transfem.deletions?.events).toEqual({ live: NOW - 1_000 });
+        expect(report.bundle.weightUpdatedAt).toBeUndefined();
+        expect(report.bundle.pkParamsUpdatedAt).toBeUndefined();
+        expect(report.issues.join(' ')).toContain('future beyond the allowed clock skew');
+        expect(report.issues.join(' ')).toContain('weightUpdatedAt');
+        expect(report.issues.join(' ')).toContain('pkParamsUpdatedAt');
+        expect(report.issues.join(' ')).toContain('tombstone(s) newer than the allowed clock skew');
+
+        const preview = inspectCompleteBackupBundle(report.bundle, context(new MemoryStorage()));
+        expect(preview.blocked).toEqual([]);
+        expect(preview.ok).toBe(true);
+    });
+
+    it('reports nothing applied when every category is blocked', () => {
+        const emptyDeletions = { events: {}, labResults: {}, doseTemplates: {} };
+        const blockedBundle = {
+            format: COMPLETE_BACKUP_FORMAT,
+            formatVersion: COMPLETE_BACKUP_FORMAT_VERSION,
+            createdAt: CREATED_AT,
+            mode: 'transfem',
+            modes: {
+                transfem: { events: [{ id: 'bad' }], deletions: emptyDeletions },
+                transmasc: { events: [{ id: 'bad' }], deletions: emptyDeletions },
+            },
+            calibration: { method: 'mipd', historyMode: 'retrospective' },
+            preferences: {},
+        } as CompleteBackupBundle;
+
+        const target = new MemoryStorage();
+        const preview = inspectCompleteBackupBundle(blockedBundle, context(target));
+        expect(preview.blocked).toEqual(expect.arrayContaining(['transfem.events', 'transmasc.events']));
+
+        const result = mergeCompleteBackupBundleToStorage(blockedBundle, context(target));
+        expect(result.applied).toEqual([]);
+        expect(result.blocked).toEqual(expect.arrayContaining(['transfem.events', 'transmasc.events']));
+        expect(classifyCompleteBackupOutcome(result)).toBe('nothing');
+        expect(target.map.size).toBe(0);
+    });
+
+    it('returns valid preferences when no category or scalar applies (settings only)', () => {
+        const preferencesBundle = {
+            format: COMPLETE_BACKUP_FORMAT,
+            formatVersion: COMPLETE_BACKUP_FORMAT_VERSION,
+            createdAt: CREATED_AT,
+            mode: 'transfem',
+            modes: { transfem: {}, transmasc: {} },
+            calibration: { method: 'mipd', historyMode: 'retrospective' },
+            preferences: { 'app-theme': 'dark' },
+        } as CompleteBackupBundle;
+
+        const target = new MemoryStorage();
+        const preview = inspectCompleteBackupBundle(preferencesBundle, context(target));
+        expect(preview.blocked).toEqual([]);
+        const result = mergeCompleteBackupBundleToStorage(preferencesBundle, context(target));
+        expect(result.applied).toEqual([]);
+        expect(result.preferences).toEqual({ 'app-theme': 'dark' });
+        expect(classifyCompleteBackupOutcome(result)).toBe('settings-only');
+        expect(target.map.size).toBe(0);
+    });
+
+    it('reports an id present as both a record and a tombstone in one bundle', () => {
+        const bundle = build(seed());
+        const emptyDeletions = { events: {}, labResults: {}, doseTemplates: {} };
+        bundle.modes.transfem.events = [event('both', { updatedAt: NOW - 2_000 })];
+        bundle.modes.transfem.labResults = [];
+        bundle.modes.transfem.doseTemplates = [];
+        bundle.modes.transfem.quickDoses = [];
+        bundle.modes.transfem.supplies = [];
+        bundle.modes.transfem.plan = [];
+        bundle.modes.transfem.deletions = { ...emptyDeletions, events: { both: NOW - 1_000 } };
+        bundle.modes.transmasc = {
+            events: [],
+            labResults: [],
+            doseTemplates: [],
+            quickDoses: [],
+            supplies: [],
+            plan: [],
+            deletions: emptyDeletions,
+        };
+
+        const preview = inspectCompleteBackupBundle(bundle, context(new MemoryStorage()));
+        expect(preview.conflicts.join(' ')).toContain('both a record and a tombstone');
+        expect(preview.stats.added).toBe(0);
+
+        const target = new MemoryStorage();
+        mergeCompleteBackupBundleToStorage(bundle, context(target));
+        const events = JSON.parse(target.getItem(key('transfem', 'events'))!) as { id: string }[];
+        expect(events).toEqual([]);
+    });
+
+    it('detects a changed preview when active state changes between open and confirm', () => {
+        const bundle = build(seed());
+        const storage = new MemoryStorage();
+        const before = inspectCompleteBackupBundle(bundle, context(storage));
+        const changedActive: CompleteBackupActive = {
+            ...activeFrom(storage, 'transfem'),
+            calibrationMethod: 'ekf',
+            calibrationHistoryMode: 'forward',
+        };
+        const after = inspectCompleteBackupBundle(bundle, context(storage, 'transfem', changedActive));
+
+        expect(before.scalars.calibration?.action).toBe('overwrite');
+        expect(after.scalars.calibration?.action).toBe('unchanged');
+        expect(completeBackupPreviewFingerprint(before)).not.toBe(completeBackupPreviewFingerprint(after));
+    });
+
+    it('truncates long id lists with a +N more suffix', () => {
+        expect(formatIds(['a', 'b', 'c', 'd', 'e', 'f', 'g'])).toBe('a, b, c, d, e, +2 more');
+        expect(formatIds(['a'])).toBe('a');
     });
 });

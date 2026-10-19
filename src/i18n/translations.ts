@@ -275,6 +275,8 @@ export const TRANSLATIONS_BASE = {
         'export.complete_confirm_message':
             '完整备份是未加密的纯文本 JSON，包含你的健康记录；任何拿到文件的人都能读取。下载后请使用离线 Tools 命令行（hrt-cold encrypt）加密，再存储或分享。本网站不会加密此文件。',
         'export.complete_confirm_btn': '下载纯文本备份',
+        'export.complete_skipped': '完整备份已下载，但有部分数据被跳过；文件仍可导入。',
+        'export.complete_failed': '无法生成完整备份，未下载任何文件。',
         'import.complete_title': '完整备份（未加密）',
         'import.complete_note':
             '完整备份是未加密的 JSON，包含记录、用品、方案、校准和设置。网站不会添加 OpenPGP 加密，也不处理私钥或口令；加密与解密请使用离线 Tools 流程。',
@@ -298,6 +300,7 @@ export const TRANSLATIONS_BASE = {
         'import.bundle_merge_note':
             '只合并可安全导入的类别；同一 ID 且没有可靠 updatedAt 时，该类别会中止。不会清空本地数据。',
         'import.bundle_merge_success': '完整备份已合并：新增 {added}，更新 {updated}，删除 {removed}。',
+        'import.bundle_settings_only': '完整备份中只有设置被应用；没有可合并的记录或标量。',
         'import.bundle_merge_success_blocked':
             '完整备份已合并：新增 {added}，更新 {updated}，删除 {removed}；以下类别已中止：{blocked}。',
         'import.bundle_merge_failed': '完整备份导入失败。已尽可能恢复原有数据；可能发生了部分写入。',
@@ -1194,6 +1197,9 @@ export const TRANSLATIONS_BASE = {
         'export.complete_confirm_message':
             'The complete backup is unencrypted plaintext JSON containing your health records; anyone who gets the file can read it. After downloading, encrypt it with the offline Tools CLI (hrt-cold encrypt) before storing or sharing. This website does not encrypt this file.',
         'export.complete_confirm_btn': 'Download plaintext',
+        'export.complete_skipped':
+            'The complete backup was downloaded, but some data was skipped; the file remains importable.',
+        'export.complete_failed': 'Could not build the complete backup. Nothing was downloaded.',
         'import.complete_title': 'Complete backup (unencrypted)',
         'import.complete_note':
             'A complete backup is unencrypted JSON containing records, supplies, plan, calibration and settings. This website does not add OpenPGP encryption and does not handle private keys or passphrases; use the offline Tools workflow to encrypt or decrypt it.',
@@ -1217,6 +1223,8 @@ export const TRANSLATIONS_BASE = {
         'import.bundle_merge_note':
             'Only categories that pass validation are merged. A category with a same-id record and no reliable updatedAt is blocked. Local data is never cleared.',
         'import.bundle_merge_success': 'Complete backup merged: {added} added, {updated} updated, {removed} removed.',
+        'import.bundle_settings_only':
+            'Only settings from the complete backup were applied; there were no mergeable records or scalar values.',
         'import.bundle_merge_success_blocked':
             'Complete backup merged: {added} added, {updated} updated, {removed} removed; blocked categories: {blocked}.',
         'import.bundle_merge_failed':
