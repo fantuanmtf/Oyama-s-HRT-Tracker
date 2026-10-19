@@ -1,6 +1,8 @@
 # Website ↔ Tools Complete-Backup Interface
 
-**Status:** website export/import data layer implemented; Replace is `BLOCKED`.
+**Status:** website export, merge, and Replace data layers implemented. Replace
+is a separate danger action backed by a crash-recoverable localStorage journal;
+it changes no envelope or `.hrtb` bytes.
 **Tools reference:** `Recovery/Tools` @ `d2ef418` (read-only),
 `tools/hrt-cold/`. The Tools CLI is an experimental checkpoint; the `.hrtb`
 container is not stable and is not wired into the website.
@@ -79,6 +81,19 @@ a malicious binary can defeat it. It does not authenticate backups imported
 directly into the website as plaintext JSON; that path has no keys and no
 signature. Website-level provenance would require changing the website's
 no-keys boundary and is not implemented.
+
+## Website Replace (internal)
+
+The website has a separate "replace this device" action, not part of this
+hand-off format. It accepts only a complete bundle: both modes, every category,
+both tombstone maps, and calibration must be present, and no duplicate id or
+dropped record is allowed. It writes a single localStorage journal containing
+the snapshot and the target values before changing any record key; a failed
+write restores the snapshot, and an interrupted process is rolled back (or
+finished, if the journal had reached `committed`) before React mounts. Scalars
+omitted by the bundle are left alone. This is an application-level transaction
+over localStorage, not a storage primitive, and it does not change Tools input
+or output.
 
 ## Envelope
 

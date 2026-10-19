@@ -153,7 +153,7 @@ Working directory: `tools/hrt-cold` on Linux/amd64 with Go 1.27.1.
 | `GOOS=windows GOARCH=amd64 go vet ./...` | PASS (cross-compile) |
 | `GOOS=windows GOARCH=amd64 go test -c` | PASS (test binary compiles) |
 | `GOOS=windows GOARCH=amd64 go build` | PASS (cross-compile) |
-| GitHub Actions `39152774184` | PASS — prior checkpoint's Ubuntu and Windows jobs; signing commit CI pending push |
+| GitHub Actions `39228438599` | PASS — Ubuntu and Windows native jobs for `a4e1edd` |
 
 Staticcheck, govulncheck, gofumpt, and golangci-lint are not installed in this
 environment; they were not run. This is not a cryptographic audit.
@@ -227,12 +227,11 @@ Tests use fresh keys generated at test time and synthetic data only. Covered:
 - **Linux:** native `go vet`, `go test`, race tests, build, and a signed manual
   CLI round-trip PASS.
 - **Windows:** native GitHub Actions workflow run
-  [39152774184](https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39152774184)
+  [39228438599](https://github.com/fantuanmtf/Oyama-s-HRT-Tracker/actions/runs/39228438599)
   passed both `Go tests (ubuntu-latest)` and `Go tests (windows-latest)` for
-  the prior checkpoint. The signing commit cross-compiles and its tests compile
-  for Windows (`GOOS=windows go vet`, `go test -c`); native CI for the new
-  commit is pending push. Windows ran native `go vet`, `go test -count=1 -v`,
-  and `go build`; the formatting step is Linux-only.
+  `a4e1edd`, including the signing and replay tests. Windows ran native
+  `go vet`, `go test -count=1 -v`, and `go build`; the formatting step is
+  Linux-only.
 - **Windows semantics:** native tests exercised `os.Link` no-replace publish,
   Windows error mapping, atomic-write failure paths, and passphrase-file
   handling. Directory fsync durability and ACL equivalence to Unix `0600`
@@ -276,7 +275,6 @@ a legal opinion. **License Gate remains BLOCKED.**
 - Crash cleanup is not automatic; a crash can leave a `.hrt-cold-*` temp file.
 - Directory fsync/crash durability is best-effort.
 - No physical erasure claim.
-- Native Windows CI for the signing commit is pending push.
 - License Gate, Docker, production website integration, release, and PR remain
   **BLOCKED / not started**. Website L3 browser coverage lives in the separate
   website PR, not in this Tools branch.
