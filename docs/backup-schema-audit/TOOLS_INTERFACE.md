@@ -90,8 +90,10 @@ both tombstone maps, and calibration must be present, and no duplicate id or
 dropped record is allowed. It writes a single localStorage journal containing
 the snapshot and the target values before changing any record key; a failed
 write restores the snapshot, and an interrupted process is rolled back (or
-finished, if the journal had reached `committed`) before React mounts. Scalars
-omitted by the bundle are left alone. This is an application-level transaction
+finished, if the journal had reached `committed`) before React mounts. The
+journal needs free localStorage headroom for the target data; if it cannot be
+written, Replace aborts before touching records. Scalars omitted by the bundle
+are left alone. This is an application-level transaction
 over localStorage, not a storage primitive, and it does not change Tools input
 or output.
 
