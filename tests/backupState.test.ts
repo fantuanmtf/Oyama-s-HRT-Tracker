@@ -7,12 +7,7 @@ import {
     sanitizeImportedTemplates,
     type StorageLike,
 } from '../src/utils/backupState';
-import {
-    defaultPack,
-    normalizeSupply,
-    packKindsFor,
-    packUnitMG,
-} from '../src/utils/regimen';
+import { defaultPack, normalizeSupply, packKindsFor, packUnitMG } from '../src/utils/regimen';
 import { normalizePlanItem } from '../src/utils/plan';
 import { DOSE_MG_MAX, Route, Ester } from '../logic';
 import { emptyTombstones, type SyncState } from '../src/utils/syncMerge';
@@ -142,6 +137,12 @@ describe('production backup seams', () => {
         expect(normalizePlanItem({ ...base, everyDays: 0, timesPerDay: 1 })).toBeNull();
         expect(normalizePlanItem({ ...base, everyDays: 1, timesPerDay: 0 })).toBeNull();
         expect(normalizePlanItem({ ...base, doseMG: -1, everyDays: 1, timesPerDay: 1 })).toBeNull();
+        // A newer version's drug code survives the loader; it is not rejected
+        // and not rewritten to a known ester.
+        expect(normalizePlanItem({ ...base, ester: 'FUTURE1', everyDays: 1, timesPerDay: 1 })).toMatchObject({
+            ester: 'FUTURE1',
+        });
+        expect(normalizePlanItem({ ...base, ester: 'not a drug code', everyDays: 1, timesPerDay: 1 })).toBeNull();
     });
 
     it('sanitizes import records with bounded fields', () => {
@@ -171,13 +172,19 @@ describe('production backup seams', () => {
         storage.setItem('hrt-u42-cal-method', 'ekf');
         storage.setItem('hrt-u42-weight-at', '111');
         storage.setItem('hrt-u42-pk-params-at', '222');
-        const payload = buildExportPayloadFromStorage(storage, '42', 'transfem', {
-            events: [event('active')],
-            labResults: [],
-            doseTemplates: [],
-            weight: 70,
-            pkParams: null,
-        }, '2026-01-01T00:00:00.000Z');
+        const payload = buildExportPayloadFromStorage(
+            storage,
+            '42',
+            'transfem',
+            {
+                events: [event('active')],
+                labResults: [],
+                doseTemplates: [],
+                weight: 70,
+                pkParams: null,
+            },
+            '2026-01-01T00:00:00.000Z',
+        );
         const serialized = JSON.stringify(payload);
         expect(payload.meta).toEqual({ version: 2, exportedAt: '2026-01-01T00:00:00.000Z' });
         expect(payload.mode).toBe('transfem');

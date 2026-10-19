@@ -22,7 +22,16 @@ import {
     type CompleteBackupContext,
 } from '../src/utils/backupBundle';
 import { MAX_IMPORT_ENTRIES, modeKeyFor, type StorageLike } from '../src/utils/backupState';
-import { TOMBSTONE_MAX_PER_KIND, TOMBSTONE_TTL_MS, type ModeKey } from '../src/utils/syncMerge';
+import {
+    TOMBSTONE_MAX_PER_KIND,
+    TOMBSTONE_TTL_MS,
+    emptySyncState,
+    mergeSyncStates,
+    normalizeSyncState,
+    type ModeKey,
+    type Tombstones,
+} from '../src/utils/syncMerge';
+import { normalizePlanItem, regimensFromPlan } from '../src/utils/plan';
 
 /** Synthetic values only. No fixture contains real health data or secrets. */
 const OWNER = 'local';
@@ -817,6 +826,26 @@ describe('complete backup bundle data layer', () => {
         const events = JSON.parse(local.getItem(key('transfem', 'events'))!) as { id: string }[];
         expect(events.map(item => item.id)).toContain('revived');
         expect(result.applied).toContain('transfem.events');
+        // The pruned map must be persisted, not just used for this decision.
+        expect(result.applied).toContain('transfem.deletions');
+        const storedTombstones = JSON.parse(local.getItem(key('transfem', 'deletions'))!) as Tombstones;
+        expect(storedTombstones.events).toEqual({});
+
+        // A later sync reads that stored map. If the expired tombstone had
+        // survived on disk, this merge would delete the record again.
+        const localState = normalizeSyncState({
+            modes: {
+                transfem: {
+                    events,
+                    labResults: [],
+                    doseTemplates: [],
+                    deletions: storedTombstones,
+                },
+            },
+        });
+        const synced = mergeSyncStates(localState, emptySyncState());
+        expect(synced.merged.modes.transfem.events.map(item => item.id)).toContain('revived');
+        expect(synced.stats.removed).toBe(0);
     });
 
     it('rejects prototype-named record and tombstone ids instead of inheriting a value', () => {
@@ -830,6 +859,24 @@ describe('complete backup bundle data layer', () => {
         constructorRecord.modes.transfem.events = [event('constructor')];
         const constructorPreview = inspectCompleteBackupBundle(constructorRecord, context(new MemoryStorage()));
         expect(constructorPreview.blocked).toContain('transfem.events');
+
+        for (const id of ['toString', 'valueOf']) {
+            const inheritedName = build(seed());
+            inheritedName.modes.transfem.events = [event(id)];
+            const recordPreview = inspectCompleteBackupBundle(inheritedName, context(new MemoryStorage()));
+            expect(recordPreview.blocked).toContain('transfem.events');
+            expect(recordPreview.issues.join(' ')).toContain('prototype name');
+
+            const inheritedTombstone = build(seed());
+            inheritedTombstone.modes.transfem.deletions = {
+                events: { [id]: NOW - 1_000 },
+                labResults: {},
+                doseTemplates: {},
+            };
+            const tombstonePreview = inspectCompleteBackupBundle(inheritedTombstone, context(new MemoryStorage()));
+            expect(tombstonePreview.blocked).toContain('transfem.deletions');
+            expect(tombstonePreview.issues.join(' ')).toContain('not allowed');
+        }
 
         const protoTombstone = build(seed());
         protoTombstone.modes.transfem.deletions = {
@@ -849,7 +896,7 @@ describe('complete backup bundle data layer', () => {
             JSON.stringify({ events: { constructor: NOW - 1_000 }, labResults: {}, doseTemplates: {} }),
         );
         const inherited = build(seed());
-        inherited.modes.transfem.events = [event('toString', { updatedAt: NOW - 2_000 })];
+        inherited.modes.transfem.events = [event('ordinary', { updatedAt: NOW - 2_000 })];
         inherited.modes.transfem.labResults = [];
         inherited.modes.transfem.doseTemplates = [];
         inherited.modes.transfem.deletions = { events: {}, labResults: {}, doseTemplates: {} };
@@ -857,7 +904,26 @@ describe('complete backup bundle data layer', () => {
         expect(inheritedPreview.conflicts.join(' ')).not.toContain('hidden by a local deletion');
         mergeCompleteBackupBundleToStorage(inherited, context(local));
         const events = JSON.parse(local.getItem(key('transfem', 'events'))!) as { id: string }[];
-        expect(events.map(item => item.id)).toContain('toString');
+        expect(events.map(item => item.id)).toContain('ordinary');
+    });
+
+    it('does not treat inherited names as tombstones during a sync merge', () => {
+        const local = normalizeSyncState({
+            modes: {
+                transfem: {
+                    events: [event('toString'), event('valueOf')],
+                    labResults: [],
+                    doseTemplates: [],
+                    // Only valueOf is an explicit deletion; toString must not
+                    // inherit Object.prototype.toString as a tombstone value.
+                    deletions: { events: { valueOf: NOW - 1_000 }, labResults: {}, doseTemplates: {} },
+                },
+            },
+        });
+
+        const result = mergeSyncStates(local, emptySyncState());
+        expect(result.merged.modes.transfem.events.map(item => item.id)).toEqual(['toString']);
+        expect(result.stats.removed).toBe(1);
     });
 
     it('exports duplicate ids once and reports the collapsed id', () => {
@@ -938,6 +1004,15 @@ describe('complete backup bundle data layer', () => {
             const records = JSON.parse(target.getItem(key('transfem', suffix))!) as { ester: string }[];
             expect(records.some(record => record.ester === futureEster)).toBe(true);
         }
+
+        // The plan loader must keep the imported code rather than dropping the
+        // row. The simulation has no model for it, so it contributes no curve
+        // and is not silently rewritten to a known ester.
+        const storedPlan = JSON.parse(target.getItem(key('transfem', 'plan'))!) as Record<string, unknown>[];
+        const loadedPlan = normalizePlanItem(storedPlan[0]);
+        expect(loadedPlan?.ester).toBe(futureEster);
+        expect(regimensFromPlan([loadedPlan!], [], 500_000)[0].hormone).toBe('other');
+        expect(normalizePlanItem(plan('bad-code', { ester: 'not a drug code' }))).toBeNull();
     });
 
     it('applies the import future-stamp bound on export and reports dropped stamps', () => {
@@ -1060,6 +1135,20 @@ describe('complete backup bundle data layer', () => {
         expect(before.scalars.calibration?.action).toBe('overwrite');
         expect(after.scalars.calibration?.action).toBe('unchanged');
         expect(completeBackupPreviewFingerprint(before)).not.toBe(completeBackupPreviewFingerprint(after));
+    });
+
+    it('includes the target account in the preview fingerprint', () => {
+        const bundle = build(seed());
+        const storage = new MemoryStorage();
+        const first = inspectCompleteBackupBundle(bundle, context(storage));
+        const second = inspectCompleteBackupBundle(bundle, {
+            ...context(storage),
+            owner: 'synthetic-account-2',
+        });
+
+        expect(first.targetOwner).toBe(OWNER);
+        expect(second.targetOwner).toBe('synthetic-account-2');
+        expect(completeBackupPreviewFingerprint(first)).not.toBe(completeBackupPreviewFingerprint(second));
     });
 
     it('truncates long id lists with a +N more suffix', () => {

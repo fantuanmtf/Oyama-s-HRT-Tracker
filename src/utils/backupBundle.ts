@@ -18,9 +18,9 @@ import {
     DOSE_MG_MAX,
     EVENT_TIME_H_MAX,
     EVENT_TIME_H_MIN,
-    Ester,
     Route,
     isLabAssay,
+    isDrugCode,
     isPlausibleBodyWeightKG,
     normalizeCalibrationMethod,
     sanitizePKParams,
@@ -201,6 +201,11 @@ export interface CompleteBackupPreview {
     createdAt?: string;
     sourceMode?: ModeKey;
     currentMode: ModeKey;
+    /**
+     * The account whose storage this preview targets. Two previews of the same
+     * file against different accounts are not interchangeable.
+     */
+    targetOwner: string;
     counts: Record<ModeKey, BundleCounts>;
     /** Category paths the file does not mention at all. */
     missing: string[];
@@ -297,20 +302,11 @@ const isRoute = (value: unknown): value is Route =>
     typeof value === 'string' && (Object.values(Route) as string[]).includes(value);
 
 /**
- * One ester rule for every record category. A newer app version may know a
- * drug code this build does not, so a syntactically valid code is preserved
- * instead of rejecting the category. Supplies/plan used to require a known
- * enum value while events/templates/quick doses accepted future codes; that
- * asymmetry made an exported bundle import differently by category.
- */
-const isDrugCode = (value: unknown): value is Ester => typeof value === 'string' && /^[A-Za-z0-9_]{1,24}$/.test(value);
-
-/**
  * Names that would collide with `Object.prototype` on a plain-object map.
  * Record ids are rejected outright; tombstone maps use null-prototype objects
  * and `Object.hasOwn`, so even a stray local value cannot inherit a timestamp.
  */
-const FORBIDDEN_IDS: ReadonlySet<string> = new Set(['__proto__', 'constructor', 'prototype']);
+const FORBIDDEN_IDS: ReadonlySet<string> = new Set([...Object.getOwnPropertyNames(Object.prototype), 'prototype']);
 
 const isRecordId = (value: unknown): value is string =>
     typeof value === 'string' && value !== '' && !FORBIDDEN_IDS.has(value);
@@ -1296,6 +1292,12 @@ interface ModeDeletionPlan {
     conflicts: string[];
 }
 
+const sameTombstoneMap = (a: TombstoneMap, b: TombstoneMap): boolean => {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    return aKeys.length === bKeys.length && aKeys.every(id => hasOwn(b, id) && a[id] === b[id]);
+};
+
 /**
  * Decide what each incoming tombstone does without writing. Tombstones from the
  * future, older than the sync TTL, or above the per-kind cap are not imported.
@@ -1374,6 +1376,13 @@ const planDeletions = (
         const droppedLocal = Object.keys(candidate).filter(id => !hasOwn(finalMap, id) && !hasOwn(accepted, id));
         if (droppedLocal.length) {
             conflicts.push(`${path}: dropped ${droppedLocal.length} local tombstone(s) outside the TTL/cap bounds`);
+        }
+        // The pruned map is what the merge checks against, so it must replace
+        // the stored map too. Otherwise an expired local tombstone is gone only
+        // for this import and can delete the restored record on the next sync.
+        const prunedLocal = pruneTombstoneMap(localTombstones[kind], now);
+        if (droppedLocal.length > 0 || !sameTombstoneMap(prunedLocal, localTombstones[kind])) {
+            writeNeeded = true;
         }
 
         const removedLocalIds: string[] = [];
@@ -1808,7 +1817,7 @@ const reconcileBundle = (parsed: ParsedBundle, context: CompleteBackupContext, n
                 removed -= kindPlan.removedLocalIds.length;
                 kindPlan.accepted = {};
                 kindPlan.removedLocalIds = [];
-                writeTombstones = clearedAnyTombstone || acceptedTombstonesRemain();
+                writeTombstones = writeTombstones || clearedAnyTombstone || acceptedTombstonesRemain();
             }
         } else {
             // Envelope/mode-level errors skip this mode entirely; still record
@@ -1861,6 +1870,7 @@ export function inspectCompleteBackupBundle(raw: unknown, context: CompleteBacku
         createdAt: parsed.createdAt,
         sourceMode: parsed.sourceMode,
         currentMode: context.mode,
+        targetOwner: context.owner,
         counts,
         missing: parsed.missing,
         blocked: [...reconciled.blocked],
@@ -1891,6 +1901,7 @@ export function completeBackupPreviewFingerprint(preview: CompleteBackupPreview)
         createdAt: preview.createdAt,
         sourceMode: preview.sourceMode,
         currentMode: preview.currentMode,
+        targetOwner: preview.targetOwner,
         counts: preview.counts,
         missing: [...preview.missing].sort(),
         blocked: [...preview.blocked].sort(),
