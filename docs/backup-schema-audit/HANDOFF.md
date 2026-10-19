@@ -588,6 +588,10 @@ browser-level regression test for P2-1.
   `test: cover inherited tombstone names for both ids`. It proves both
   `toString` and `valueOf` survive an empty tombstone map in a sync merge,
   while an explicit `valueOf` tombstone still deletes that record.
+- **Follow-up fallback commit:** `2880bb5` —
+  `fix: prune tombstones when bundle omits deletions`. A bundle without a
+  `deletions` block skips `planDeletions`, so reconciliation now prunes and
+  persists the local map directly in that case.
 - **Files:** `logic.ts`, `src/utils/backupBundle.ts`, `src/utils/plan.ts`,
   `src/utils/syncMerge.ts`, `tests/backupBundle.test.ts`,
   `tests/backupState.test.ts`, `docs/backup-schema-audit/*`.
