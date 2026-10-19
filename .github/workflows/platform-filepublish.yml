@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - main
-      - 'agent/**'
+      - "agent/**"
   workflow_dispatch:
 
 permissions:

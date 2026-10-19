@@ -23,10 +23,10 @@ Already-covered record data remains governed by the existing v2 export/import an
 
 ### 2.1 Two explicit restore actions
 
-| Action | Meaning | Required user confirmation |
-|---|---|---|
-| **Replace local data** | Clear selected local-only categories, then write backup values | Typed confirmation; show counts and categories |
-| **Merge into local data** | Keep existing records and add/overwrite by explicit policy | Show conflicts and per-category policy |
+| Action                    | Meaning                                                        | Required user confirmation                     |
+| ------------------------- | -------------------------------------------------------------- | ---------------------------------------------- |
+| **Replace local data**    | Clear selected local-only categories, then write backup values | Typed confirmation; show counts and categories |
+| **Merge into local data** | Keep existing records and add/overwrite by explicit policy     | Show conflicts and per-category policy         |
 
 There must be no silent automatic restore. The user must see:
 
@@ -54,15 +54,15 @@ If any step fails, no user-visible category should be partially restored. `local
 Production type: `{id, route, ester, value, createdAt}`.
 Persistence: `hrt-[u<id>-]<mode>-quick-doses`.
 
-| Rule | Status |
-|---|---|
-| Include in complete-device backup | NEEDS_HUMAN_APPROVAL |
-| Replace: clear current array then write backup | Design |
-| Merge: add by `id`; duplicate `id` keeps local unless user chooses backup | NEEDS_DECISION |
-| Missing/invalid id: reject whole category or skip record | NEEDS_DECISION |
-| No `updatedAt`: cannot resolve true conflicts | NEEDS_DECISION |
-| Cross-mode records: restore only matching mode key | Design |
-| Empty array is meaningful; do not treat as missing | Design |
+| Rule                                                                      | Status               |
+| ------------------------------------------------------------------------- | -------------------- |
+| Include in complete-device backup                                         | NEEDS_HUMAN_APPROVAL |
+| Replace: clear current array then write backup                            | Design               |
+| Merge: add by `id`; duplicate `id` keeps local unless user chooses backup | NEEDS_DECISION       |
+| Missing/invalid id: reject whole category or skip record                  | NEEDS_DECISION       |
+| No `updatedAt`: cannot resolve true conflicts                             | NEEDS_DECISION       |
+| Cross-mode records: restore only matching mode key                        | Design               |
+| Empty array is meaningful; do not treat as missing                        | Design               |
 
 ### 3.2 Supplies
 
@@ -83,16 +83,16 @@ Production type:
 {kind:'bulk'}
 ```
 
-| Rule | Status |
-|---|---|
-| Include in complete-device backup | NEEDS_HUMAN_APPROVAL |
-| Preserve exact pack object branch and fields | REQUIRED |
-| Accept legacy bare numeric `amount` only through a documented migration path | NEEDS_DECISION |
-| Reject string pack or unknown `kind` | REQUIRED |
-| Validate route/ester enums and per-kind positive finite fields | REQUIRED |
-| `count >= 0` finite; `startedAt` finite epoch-ms | REQUIRED |
-| Merge by `id`; duplicate id keeps local unless user chooses backup | NEEDS_DECISION |
-| No `updatedAt`; no authoritative conflict resolution | NEEDS_DECISION |
+| Rule                                                                         | Status               |
+| ---------------------------------------------------------------------------- | -------------------- |
+| Include in complete-device backup                                            | NEEDS_HUMAN_APPROVAL |
+| Preserve exact pack object branch and fields                                 | REQUIRED             |
+| Accept legacy bare numeric `amount` only through a documented migration path | NEEDS_DECISION       |
+| Reject string pack or unknown `kind`                                         | REQUIRED             |
+| Validate route/ester enums and per-kind positive finite fields               | REQUIRED             |
+| `count >= 0` finite; `startedAt` finite epoch-ms                             | REQUIRED             |
+| Merge by `id`; duplicate id keeps local unless user chooses backup           | NEEDS_DECISION       |
+| No `updatedAt`; no authoritative conflict resolution                         | NEEDS_DECISION       |
 
 **Current audit:** `normalizeSupply` accepts a broad object with only string `id`, object `pack`, numeric `count`, and does not validate every pack branch. Prototype string pack is not production schema. `FAIL` / `REVIEW_REQUIRED`.
 
@@ -100,67 +100,67 @@ Production type:
 
 Production type: `{id, route, ester, doseMG, extras, everyDays, timesPerDay}`.
 
-| Rule | Status |
-|---|---|
-| Include in complete-device backup | NEEDS_HUMAN_APPROVAL |
-| `route`/`ester` must be enum values | REQUIRED |
-| `everyDays >= 1`; `timesPerDay >= 1` | REQUIRED |
-| `doseMG` finite and `>= 0` | REQUIRED |
-| `extras` object or `{}`; unknown numeric extras preserved | REQUIRED |
-| When `everyDays > 1`, force `timesPerDay = 1` | Existing normalize behavior |
-| Merge by `id`; duplicate id keeps local unless user chooses backup | NEEDS_DECISION |
-| No `updatedAt`; cannot resolve concurrent edits | NEEDS_DECISION |
-| Legacy `cpa-plan` is not part of Option B; only current `plan` | Design |
+| Rule                                                               | Status                      |
+| ------------------------------------------------------------------ | --------------------------- |
+| Include in complete-device backup                                  | NEEDS_HUMAN_APPROVAL        |
+| `route`/`ester` must be enum values                                | REQUIRED                    |
+| `everyDays >= 1`; `timesPerDay >= 1`                               | REQUIRED                    |
+| `doseMG` finite and `>= 0`                                         | REQUIRED                    |
+| `extras` object or `{}`; unknown numeric extras preserved          | REQUIRED                    |
+| When `everyDays > 1`, force `timesPerDay = 1`                      | Existing normalize behavior |
+| Merge by `id`; duplicate id keeps local unless user chooses backup | NEEDS_DECISION              |
+| No `updatedAt`; cannot resolve concurrent edits                    | NEEDS_DECISION              |
+| Legacy `cpa-plan` is not part of Option B; only current `plan`     | Design                      |
 
 ### 3.4 Calibration state
 
 Values: `calMethod` (`off|ekf|ou_kalman|mipd`) and `calHistoryMode` (`forward|retrospective`).
 
-| Rule | Status |
-|---|---|
-| Include in complete-device backup | NEEDS_HUMAN_APPROVAL |
-| Restore only if user confirms; default to keep current | NEEDS_DECISION |
-| Invalid value: reject or fall back to current/default | NEEDS_DECISION |
-| Calibration is not a per-record array; replace is simpler than merge | Design |
-| Calibration affects PK interpretation; show warning before overwrite | REQUIRED |
+| Rule                                                                 | Status               |
+| -------------------------------------------------------------------- | -------------------- |
+| Include in complete-device backup                                    | NEEDS_HUMAN_APPROVAL |
+| Restore only if user confirms; default to keep current               | NEEDS_DECISION       |
+| Invalid value: reject or fall back to current/default                | NEEDS_DECISION       |
+| Calibration is not a per-record array; replace is simpler than merge | Design               |
+| Calibration affects PK interpretation; show warning before overwrite | REQUIRED             |
 
 ### 3.5 Preferences
 
-| Key | Category | Include? | Reason |
-|---|---|---|---|
-| `hrt-lang` | UI language | NEEDS_HUMAN_APPROVAL | User preference, low risk |
-| `app-theme` | UI theme | NEEDS_HUMAN_APPROVAL | User preference |
-| `hrt-supply-lead-days` | supply warning | NEEDS_HUMAN_APPROVAL | Affects reminders, not health records |
-| `app-show-prediction` | UI behavior | NEEDS_HUMAN_APPROVAL | UI preference |
-| `app-hide-site-label` | UI preference | NEEDS_HUMAN_APPROVAL | UI preference |
-| `hrt-mode` | active mode | NEEDS_HUMAN_APPROVAL | Mode selection; must not silently switch |
-| `app-pixel-cats` | cosmetic | NEEDS_HUMAN_APPROVAL | Low value, optional |
-| `app-pixel-cat-style` | cosmetic | NEEDS_HUMAN_APPROVAL | Low value, optional |
-| `app-auto-backup` | security/behavior | **EXCLUDE** | Could re-enable cloud upload unexpectedly |
-| `app-dev-mode` | developer behavior | **EXCLUDE** | Security/debug surface |
-| `site-notice-dismissed` | device-specific | **EXCLUDE** | Not user data |
-| `app-onboarded` | device-specific | **EXCLUDE** | Not user data |
-| `auth_*`, `weak_password`, `login_device_passes`, `enc_key` | credentials | **EXCLUDE** | Never backup |
+| Key                                                         | Category           | Include?             | Reason                                    |
+| ----------------------------------------------------------- | ------------------ | -------------------- | ----------------------------------------- |
+| `hrt-lang`                                                  | UI language        | NEEDS_HUMAN_APPROVAL | User preference, low risk                 |
+| `app-theme`                                                 | UI theme           | NEEDS_HUMAN_APPROVAL | User preference                           |
+| `hrt-supply-lead-days`                                      | supply warning     | NEEDS_HUMAN_APPROVAL | Affects reminders, not health records     |
+| `app-show-prediction`                                       | UI behavior        | NEEDS_HUMAN_APPROVAL | UI preference                             |
+| `app-hide-site-label`                                       | UI preference      | NEEDS_HUMAN_APPROVAL | UI preference                             |
+| `hrt-mode`                                                  | active mode        | NEEDS_HUMAN_APPROVAL | Mode selection; must not silently switch  |
+| `app-pixel-cats`                                            | cosmetic           | NEEDS_HUMAN_APPROVAL | Low value, optional                       |
+| `app-pixel-cat-style`                                       | cosmetic           | NEEDS_HUMAN_APPROVAL | Low value, optional                       |
+| `app-auto-backup`                                           | security/behavior  | **EXCLUDE**          | Could re-enable cloud upload unexpectedly |
+| `app-dev-mode`                                              | developer behavior | **EXCLUDE**          | Security/debug surface                    |
+| `site-notice-dismissed`                                     | device-specific    | **EXCLUDE**          | Not user data                             |
+| `app-onboarded`                                             | device-specific    | **EXCLUDE**          | Not user data                             |
+| `auth_*`, `weak_password`, `login_device_passes`, `enc_key` | credentials        | **EXCLUDE**          | Never backup                              |
 
 **Recommendation:** include only language, theme, supply lead days, show-prediction and hide-site-label; keep cosmetic and behavioral/security preferences out of Option B until explicitly approved.
 
 ## 4. Conflict policy table
 
-| Situation | Default proposal | Status |
-|---|---|---|
-| Same record `id` exists locally and in backup | Keep local; show conflict | NEEDS_DECISION |
-| No `updatedAt` on local-only record | Cannot order; require user choice | NEEDS_DECISION |
-| Backup contains record absent locally | Add | Design |
-| Local record absent from backup | Keep; backup is not a deletion source | Design |
-| Duplicate IDs inside backup | Reject whole category | Design |
-| Invalid record in backup | Reject whole category or skip with report | NEEDS_DECISION |
-| Backup mode differs from current mode | Restore matching mode key; do not cross-copy | Design |
-| Existing record deleted locally | No tombstone for local-only arrays; cannot distinguish never-existed vs deleted | NEEDS_DECISION |
-| Preferences conflict | Keep current; apply only selected keys | NEEDS_DECISION |
-| Calibration conflict | Keep current unless user confirms replace | NEEDS_DECISION |
-| Older format version | Read-only preview; no auto-migrate | Design |
-| Unknown critical field | Reject restore | Design |
-| Unknown non-critical field | Preserve or ignore with report | NEEDS_DECISION |
+| Situation                                     | Default proposal                                                                | Status         |
+| --------------------------------------------- | ------------------------------------------------------------------------------- | -------------- |
+| Same record `id` exists locally and in backup | Keep local; show conflict                                                       | NEEDS_DECISION |
+| No `updatedAt` on local-only record           | Cannot order; require user choice                                               | NEEDS_DECISION |
+| Backup contains record absent locally         | Add                                                                             | Design         |
+| Local record absent from backup               | Keep; backup is not a deletion source                                           | Design         |
+| Duplicate IDs inside backup                   | Reject whole category                                                           | Design         |
+| Invalid record in backup                      | Reject whole category or skip with report                                       | NEEDS_DECISION |
+| Backup mode differs from current mode         | Restore matching mode key; do not cross-copy                                    | Design         |
+| Existing record deleted locally               | No tombstone for local-only arrays; cannot distinguish never-existed vs deleted | NEEDS_DECISION |
+| Preferences conflict                          | Keep current; apply only selected keys                                          | NEEDS_DECISION |
+| Calibration conflict                          | Keep current unless user confirms replace                                       | NEEDS_DECISION |
+| Older format version                          | Read-only preview; no auto-migrate                                              | Design         |
+| Unknown critical field                        | Reject restore                                                                  | Design         |
+| Unknown non-critical field                    | Preserve or ignore with report                                                  | NEEDS_DECISION |
 
 **Important:** local-only arrays have no tombstones and no `updatedAt`. Merge conflict semantics cannot be made authoritative without a schema change. This is a `NEEDS_HUMAN_APPROVAL` product decision, not something to guess.
 
@@ -190,23 +190,23 @@ If a backup contains such fields, reject the restore or ignore them with a visib
 
 All tests use fictional IDs, dates and values.
 
-| ID | Test | Expected |
-|---|---|---|
-| T1 | Round-trip both modes with local-only arrays | Exact category counts and IDs |
-| T2 | Merge adds new IDs, keeps local on conflict | No duplicate IDs |
-| T3 | Replace clears only selected categories | Credentials/preferences excluded |
-| T4 | Duplicate ID inside backup | Reject category, no writes |
-| T5 | Invalid Supply pack kind/fields | Reject or explicit skip; no partial write |
-| T6 | String Supply.pack (Phase1D) | Rejected; no production schema fallback |
-| T7 | Plan `everyDays`/`timesPerDay` bounds | Invalid rejected; valid normalized |
-| T8 | Calibration invalid/legacy value | No silent overwrite; status reported |
-| T9 | Preferences acceptance/exclusion matrix | Only approved keys applied |
-| T10 | Unknown format version / critical field | Read-only preview; no writes |
-| T11 | Mid-write failure rollback | Previous keys restored |
-| T12 | Cross-account / cross-mode restore warning | No namespace crossover |
-| T13 | Credentials present in backup | Rejected/ignored, never persisted |
-| T14 | Empty arrays vs missing fields | Empty preserved; missing reported |
-| T15 | Repeated restore idempotence | No duplicates, stable counts |
+| ID  | Test                                         | Expected                                  |
+| --- | -------------------------------------------- | ----------------------------------------- |
+| T1  | Round-trip both modes with local-only arrays | Exact category counts and IDs             |
+| T2  | Merge adds new IDs, keeps local on conflict  | No duplicate IDs                          |
+| T3  | Replace clears only selected categories      | Credentials/preferences excluded          |
+| T4  | Duplicate ID inside backup                   | Reject category, no writes                |
+| T5  | Invalid Supply pack kind/fields              | Reject or explicit skip; no partial write |
+| T6  | String Supply.pack (Phase1D)                 | Rejected; no production schema fallback   |
+| T7  | Plan `everyDays`/`timesPerDay` bounds        | Invalid rejected; valid normalized        |
+| T8  | Calibration invalid/legacy value             | No silent overwrite; status reported      |
+| T9  | Preferences acceptance/exclusion matrix      | Only approved keys applied                |
+| T10 | Unknown format version / critical field      | Read-only preview; no writes              |
+| T11 | Mid-write failure rollback                   | Previous keys restored                    |
+| T12 | Cross-account / cross-mode restore warning   | No namespace crossover                    |
+| T13 | Credentials present in backup                | Rejected/ignored, never persisted         |
+| T14 | Empty arrays vs missing fields               | Empty preserved; missing reported         |
+| T15 | Repeated restore idempotence                 | No duplicates, stable counts              |
 
 ## 8. Acceptance criteria
 

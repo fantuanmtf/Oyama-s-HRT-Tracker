@@ -21,23 +21,23 @@ Initial run had 14 passes and one test-fixture error: T8 placed calibration unde
 
 ## Test mapping
 
-| ID | Test | Result | What it proves |
-|---|---|---|---|
-| T1 | Round-trip both modes with local-only arrays | PASS | Category counts and IDs survive model round-trip |
-| T2 | Merge adds IDs and keeps local on conflict | PASS | `keep-local` policy is deterministic |
-| T3 | Replace only selected categories | PASS | Unselected categories are preserved |
-| T4 | Duplicate IDs inside backup | PASS | Whole category is rejected |
-| T5 | Valid/invalid `Supply.pack` object union | PASS | Branch-specific fields are validated |
-| T6 | String `Supply.pack` (Phase 1D) | PASS | Experimental string schema is rejected |
-| T7 | Plan bounds | PASS | `everyDays`, `timesPerDay`, `doseMG` bounds enforced |
-| T8 | Invalid calibration | PASS | Invalid method/history mode rejected |
-| T9 | Preferences and credentials | PASS | Approved prefs only; credentials rejected |
-| T10 | Unknown version | PASS | Unsupported version rejected |
-| T11 | Transaction rollback | PASS | Simulated commit failure restores prior state |
-| T12 | Cross-mode/account warnings | PASS | Warnings emitted; no silent crossover |
-| T13 | Credentials never persist | PASS | Credential fields do not reach state |
-| T14 | Empty vs missing | PASS | Empty arrays preserved; missing reported |
-| T15 | Repeated merge idempotence | PASS | No duplicate IDs after repeat |
+| ID  | Test                                         | Result | What it proves                                       |
+| --- | -------------------------------------------- | ------ | ---------------------------------------------------- |
+| T1  | Round-trip both modes with local-only arrays | PASS   | Category counts and IDs survive model round-trip     |
+| T2  | Merge adds IDs and keeps local on conflict   | PASS   | `keep-local` policy is deterministic                 |
+| T3  | Replace only selected categories             | PASS   | Unselected categories are preserved                  |
+| T4  | Duplicate IDs inside backup                  | PASS   | Whole category is rejected                           |
+| T5  | Valid/invalid `Supply.pack` object union     | PASS   | Branch-specific fields are validated                 |
+| T6  | String `Supply.pack` (Phase 1D)              | PASS   | Experimental string schema is rejected               |
+| T7  | Plan bounds                                  | PASS   | `everyDays`, `timesPerDay`, `doseMG` bounds enforced |
+| T8  | Invalid calibration                          | PASS   | Invalid method/history mode rejected                 |
+| T9  | Preferences and credentials                  | PASS   | Approved prefs only; credentials rejected            |
+| T10 | Unknown version                              | PASS   | Unsupported version rejected                         |
+| T11 | Transaction rollback                         | PASS   | Simulated commit failure restores prior state        |
+| T12 | Cross-mode/account warnings                  | PASS   | Warnings emitted; no silent crossover                |
+| T13 | Credentials never persist                    | PASS   | Credential fields do not reach state                 |
+| T14 | Empty vs missing                             | PASS   | Empty arrays preserved; missing reported             |
+| T15 | Repeated merge idempotence                   | PASS   | No duplicate IDs after repeat                        |
 
 ## What this does not prove
 
@@ -58,13 +58,13 @@ Initial run had 14 passes and one test-fixture error: T8 placed calibration unde
 
 ## Status summary
 
-| Area | Status |
-|---|---|
-| L1 pure model design | PASS |
-| L1 tests T1–T15 | PASS |
-| Production-function tests (L2) | BLOCKED |
-| End-to-end restore (L3) | BLOCKED |
-| Production restore implementation | NOT_IMPLEMENTED |
-| Option B product scope | NEEDS_HUMAN_APPROVAL |
-| Conflict policy without timestamps | NEEDS_HUMAN_APPROVAL |
-| License Gate / Docker / production integration | BLOCKED |
+| Area                                           | Status               |
+| ---------------------------------------------- | -------------------- |
+| L1 pure model design                           | PASS                 |
+| L1 tests T1–T15                                | PASS                 |
+| Production-function tests (L2)                 | BLOCKED              |
+| End-to-end restore (L3)                        | BLOCKED              |
+| Production restore implementation              | NOT_IMPLEMENTED      |
+| Option B product scope                         | NEEDS_HUMAN_APPROVAL |
+| Conflict policy without timestamps             | NEEDS_HUMAN_APPROVAL |
+| License Gate / Docker / production integration | BLOCKED              |
