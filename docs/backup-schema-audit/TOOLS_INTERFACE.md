@@ -1,13 +1,15 @@
-# Website ↔ Tools Complete-Backup Interface
+# Oyama HRT Tracker Complete-Backup ↔ Tools Interface
 
-**Status:** website export, merge, and Replace data layers implemented. Replace
-is a separate danger action backed by a crash-recoverable localStorage journal;
-it changes no envelope or `.hrtb` bytes.
-**Tools reference:** this `Recovery/Tools` branch, `tools/hrt-cold/`. The Tools
-CLI is an experimental checkpoint; the `.hrtb` container is not stable and is
-not wired into the website.
-**Scope:** hand-off format between the website and the separate offline Tools
-project. The website does **not** encrypt or decrypt this file.
+**Status:** independent Tools project interface. The website export, merge, and
+Replace data layers are implemented on the website side. Replace is a separate
+danger action backed by a crash-recoverable localStorage journal; it changes no
+envelope or `.hrtb` bytes.
+**Tools reference:** `xunxunProjects/Oyama-s-HRT-Tracker-Tools` (`main`),
+`tools/hrt-cold/`. The CLI is a pre-release; the `.hrtb` container is not stable
+and is not wired into the website.
+**Scope:** hand-off format between the Oyama HRT Tracker website and this
+independent offline Tools project. The website does **not** encrypt or decrypt
+this file.
 
 ## Boundary
 

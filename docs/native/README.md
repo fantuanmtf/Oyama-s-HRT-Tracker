@@ -3,10 +3,10 @@
 **Status: Milestone 0 — contract and build system only. No native core
 implementation is present yet.**
 
-The working Tools implementation is still the Go CLI in
-[`tools/hrt-cold`](../../tools/hrt-cold/README.md). This directory specifies the
-planned C/C++ core, its ABI, build system, crypto backend decision, and test
-plan. The C/C++ decision is intentional: C/C++ has the broadest library and
+The working implementation of the independent Oyama HRT Tracker Tools project
+is still the Go CLI in [`tools/hrt-cold`](../../tools/hrt-cold/README.md). This
+directory specifies the planned C/C++ core, its ABI, build system, crypto
+backend decision, and test plan. The C/C++ decision is intentional: C/C++ has the broadest library and
 toolchain compatibility, while Rust was deferred to avoid adding a second
 build ecosystem.
 

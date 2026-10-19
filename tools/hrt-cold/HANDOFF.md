@@ -1,15 +1,15 @@
 # Tools Checkpoint — hrt-cold
 
-**Status:** Tools checkpoint complete and pushed to
+**Status:** independent Tools project; `v0.1.0` pre-release published from
 `xunxunProjects/Oyama-s-HRT-Tracker-Tools` (`main`). The `.hrtb` format remains
 experimental and is **not stable**. Signing, pinned-key verification, and local
 anti-replay are implemented; the website's direct plaintext import path remains
-unauthenticated. This checkpoint does **not** unblock the License Gate, Docker,
-production website integration, a release, or a pull request.
+unauthenticated. This checkpoint does **not** unblock the License Gate, Docker
+production readiness, an independent audit, or a production-support claim.
 
 ## Repository and baseline
 
-- **Repository:** `xunxunProjects/Oyama-s-HRT-Tracker-Tools` (private)
+- **Repository:** `xunxunProjects/Oyama-s-HRT-Tracker-Tools`
 - **Branch:** `main`
 - **History:** imported from `fantuanmtf/Oyama-s-HRT-Tracker:Recovery/Tools` @
   `8424d6e`; that branch was derived from `agent/backup-schema-audit` @
@@ -33,6 +33,9 @@ production website integration, a release, or a pull request.
 | `6e27748` | `docs(tools): sync audit, recovery demo, and platform CI` |
 | `d2ef418` | `feat(tools): sign, verify, and reject replayed cold backups` |
 | `497fe11` | `chore(tools): make Recovery/Tools a tools-only branch` |
+| `801793c` | `feat(tools): add docs-first C/C++ native scaffold` |
+| `8424d6e` | `feat(tools): add version command and multiarch release packaging` |
+| `0511d05` | `chore(tools): target the dedicated tools repository`; tagged `v0.1.0` |
 
 ## Native C/C++ core (Milestone 0)
 

@@ -1,23 +1,45 @@
 # hrt-cold
 
-`hrt-cold` is a standalone, offline OpenPGP cold-backup CLI for the website's
+`hrt-cold` is the first tool in the independent **Oyama HRT Tracker Tools**
+project: a standalone, offline OpenPGP cold-backup CLI for the
 `oyama-hrt-complete-backup` JSON bundle.
 
-**Status: experimental Tools checkpoint.** The `.hrtb` container is the draft
-Phase 1F format. It is **not stable**, not production-approved, and not wired
-into the website. This tool does not add OpenPGP to the website and is not a
-runtime dependency of the web app.
+**Status: pre-release `0.1.0`.** The `.hrtb` container is an experimental draft
+format. It is **not stable**, not production-approved, and not independently
+audited. This tool does not add OpenPGP to the Oyama HRT Tracker website and is
+not a runtime dependency of the web app.
 
-The website remains responsible for producing and importing the unencrypted
-bundle. This tool validates the bundle envelope, signs and encrypts it,
-decrypts and verifies it, applies a local anti-replay mark to verified backups,
-and writes files atomically.
+The website is one compatible producer and consumer of the unencrypted bundle.
+It does not handle keys or passphrases. This tool validates the bundle envelope,
+signs and encrypts it, decrypts and verifies it, applies a local anti-replay
+mark to verified backups, and writes files atomically.
 
 The Go CLI is the working implementation. A C/C++ native core is being
 specified before it is written: Milestone 0 adds `configure`, CMake, a C ABI
 header, and design/ABI/crypto/test docs. See
 [`docs/native/README.md`](../../docs/native/README.md). No native core code or
 crypto backend is linked yet.
+
+## Download and verify
+
+Prebuilt Linux/Windows amd64 and 386 binaries are on the
+[`v0.1.0` pre-release](https://github.com/xunxunProjects/Oyama-s-HRT-Tracker-Tools/releases/tag/v0.1.0),
+each with a detached `.sig` plus `SHA512SUMS` and `MD5SUMS`.
+
+```sh
+sha512sum -c SHA512SUMS
+md5sum -c MD5SUMS
+gpg --verify hrt-cold-linux-amd64.sig hrt-cold-linux-amd64
+```
+
+Release signing key fingerprint:
+
+```text
+77E9454AEC3265F44DC9F633642B427879C25A49
+```
+
+The `.sig` files are binary detached signatures. Verify them before running a
+binary; see [`SECURITY.md`](../../SECURITY.md) for reporting and scope.
 
 ## Build and test
 
