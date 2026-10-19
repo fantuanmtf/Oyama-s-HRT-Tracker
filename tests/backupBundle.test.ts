@@ -908,7 +908,21 @@ describe('complete backup bundle data layer', () => {
     });
 
     it('does not treat inherited names as tombstones during a sync merge', () => {
-        const local = normalizeSyncState({
+        const surviving = normalizeSyncState({
+            modes: {
+                transfem: {
+                    events: [event('toString'), event('valueOf')],
+                    labResults: [],
+                    doseTemplates: [],
+                    deletions: { events: {}, labResults: {}, doseTemplates: {} },
+                },
+            },
+        });
+        const survived = mergeSyncStates(surviving, emptySyncState());
+        expect(survived.merged.modes.transfem.events.map(item => item.id)).toEqual(['toString', 'valueOf']);
+        expect(survived.stats.removed).toBe(0);
+
+        const withDeletion = normalizeSyncState({
             modes: {
                 transfem: {
                     events: [event('toString'), event('valueOf')],
@@ -920,8 +934,7 @@ describe('complete backup bundle data layer', () => {
                 },
             },
         });
-
-        const result = mergeSyncStates(local, emptySyncState());
+        const result = mergeSyncStates(withDeletion, emptySyncState());
         expect(result.merged.modes.transfem.events.map(item => item.id)).toEqual(['toString']);
         expect(result.stats.removed).toBe(1);
     });
