@@ -1,7 +1,9 @@
 # Oyama HRT Tracker — Tools
 
-This branch contains the offline Tools line of work for the Oyama HRT Tracker
-complete-backup format. It intentionally does not contain the website
+Repository: <https://github.com/xunxunProjects/Oyama-s-HRT-Tracker-Tools> (private).
+
+This repository contains the offline Tools line of work for the Oyama HRT
+Tracker complete-backup format. It intentionally does not contain the website
 application, website assets, or website CI.
 
 ## Contents

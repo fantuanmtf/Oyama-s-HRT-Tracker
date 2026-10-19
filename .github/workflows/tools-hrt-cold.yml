@@ -3,6 +3,7 @@ name: Tools hrt-cold
 on:
   push:
     branches:
+      - main
       - "Recovery/Tools"
     paths:
       - "tools/hrt-cold/**"

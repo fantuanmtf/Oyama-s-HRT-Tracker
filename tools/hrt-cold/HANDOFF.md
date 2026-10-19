@@ -1,22 +1,25 @@
 # Tools Checkpoint — hrt-cold
 
-**Status:** Tools branch checkpoint complete and pushed to `origin/Recovery/Tools`.
-The `.hrtb` format remains experimental and is **not stable**. Signing,
-pinned-key verification, and local anti-replay are implemented; the website's
-direct plaintext import path remains unauthenticated. This checkpoint does
-**not** unblock the License Gate, Docker, production website integration, a
-release, or a pull request.
+**Status:** Tools checkpoint complete and pushed to
+`xunxunProjects/Oyama-s-HRT-Tracker-Tools` (`main`). The `.hrtb` format remains
+experimental and is **not stable**. Signing, pinned-key verification, and local
+anti-replay are implemented; the website's direct plaintext import path remains
+unauthenticated. This checkpoint does **not** unblock the License Gate, Docker,
+production website integration, a release, or a pull request.
 
-## Branch and baseline
+## Repository and baseline
 
-- **Branch:** `Recovery/Tools`
-- **Base:** `agent/backup-schema-audit` @ `9874c40afb89b0e3c9201280ebfe8b1415548eb4`
-- **History:** originally branched from the audit line. The branch is now
-  tools-only: website source, assets, author/credits content, audit/demo docs,
-  and non-tools CI/tests were removed. Their history remains in Git.
+- **Repository:** `xunxunProjects/Oyama-s-HRT-Tracker-Tools` (private)
+- **Branch:** `main`
+- **History:** imported from `fantuanmtf/Oyama-s-HRT-Tracker:Recovery/Tools` @
+  `8424d6e`; that branch was derived from `agent/backup-schema-audit` @
+  `9874c40afb89b0e3c9201280ebfe8b1415548eb4`.
+- **History cleanup:** the repository is tools-only: website source, assets,
+  author/credits content, audit/demo docs, and non-tools CI/tests are absent
+  from the tree. Their history remains in Git.
 - **Interface contract:** `docs/backup-schema-audit/TOOLS_INTERFACE.md`, synced
   from the `agent/add-gpg-website` review in `6e27748` and kept as the one
-  cross-project reference on this branch.
+  cross-project reference in this repository.
 
 ## Commits
 
