@@ -6,6 +6,8 @@ import ImportSection from '../components/ImportSection';
 
 interface ImportSettingsProps {
     onImportJson: (text: string) => boolean | Promise<boolean>;
+    /** Replace the whole device from a complete bundle, through the crash journal. */
+    onReplaceJson: (text: string) => boolean | Promise<boolean>;
     onBack: () => void;
     /** Opens Export, so a backup can be made before a regular import replaces things. */
     onNavigateToExport?: () => void;
@@ -14,7 +16,7 @@ interface ImportSettingsProps {
 // No space after a CJK full stop, which carries its own.
 const gapAfter = (sentence: string) => (/[。！？]$/.test(sentence) ? '' : ' ');
 
-const ImportSettings: React.FC<ImportSettingsProps> = ({ onImportJson, onBack, onNavigateToExport }) => {
+const ImportSettings: React.FC<ImportSettingsProps> = ({ onImportJson, onReplaceJson, onBack, onNavigateToExport }) => {
     const { t } = useTranslation();
     const replaceNote = t('import.replace_note');
     const completeNote = t('import.complete_note');
@@ -44,7 +46,7 @@ const ImportSettings: React.FC<ImportSettingsProps> = ({ onImportJson, onBack, o
                         </>
                     )}
                 </div>
-                <ImportSection onImportJson={onImportJson} />
+                <ImportSection onImportJson={onImportJson} onReplaceJson={onReplaceJson} />
             </div>
         </div>
     );

@@ -22,6 +22,8 @@ import {
     describeCompleteBackupExportWarning,
     describeCompleteBackupFailure,
     describeCompleteBackupPreview,
+    describeCompleteBackupReplace,
+    describeCompleteBackupReplaceFailure,
     describeCompleteBackupResult,
     describeUnreadableCompleteBackup,
 } from './utils/backupWarnings';
@@ -137,6 +139,7 @@ const AppContent = () => {
         buildCompleteBackupBundle,
         previewCompleteBackupBundle,
         applyCompleteBackupBundle,
+        replaceCompleteBackupBundle,
         applySyncedState,
         scope,
         readyScope,
@@ -240,12 +243,14 @@ const AppContent = () => {
     const completeBackupRef = useRef({
         preview: previewCompleteBackupBundle,
         apply: applyCompleteBackupBundle,
+        replace: replaceCompleteBackupBundle,
         build: buildCompleteBackupBundle,
     });
     useEffect(() => {
         completeBackupRef.current = {
             preview: previewCompleteBackupBundle,
             apply: applyCompleteBackupBundle,
+            replace: replaceCompleteBackupBundle,
             build: buildCompleteBackupBundle,
         };
     });
@@ -460,6 +465,95 @@ const AppContent = () => {
 
             openPreview(preview);
         });
+
+    /**
+     * Replace, unlike merge, may not silently drop or block a category: the
+     * file has to describe the whole store. Scalars the format may omit
+     * (weight, PK parameters) and preferences are optional.
+     */
+    const confirmCompleteBackupReplace = (parsed: unknown): Promise<boolean> =>
+        new Promise(resolve => {
+            const optionalMissing = new Set(['weight', 'pkParams', 'preferences']);
+            const requiredMissing = (preview: CompleteBackupPreview) =>
+                preview.missing.filter(path => !optionalMissing.has(path));
+            const reject = (preview: CompleteBackupPreview) => {
+                console.warn('Complete backup cannot replace this device:', {
+                    errors: preview.errors,
+                    issues: preview.issues,
+                    missing: requiredMissing(preview),
+                });
+                showDialog('alert', t('import.bundle_invalid'));
+                resolve(false);
+            };
+
+            const preview = completeBackupRef.current.preview(parsed);
+            if (!preview.ok || preview.issues.length > 0 || requiredMissing(preview).length > 0) {
+                reject(preview);
+                return;
+            }
+
+            const run = () => {
+                try {
+                    const result = completeBackupRef.current.replace(parsed);
+                    applyPortablePreferences(result.preferences);
+                    showDialog('alert', t('import.replace_complete_success'));
+                    resolve(true);
+                } catch (err) {
+                    console.error(err);
+                    showDialog('alert', describeCompleteBackupReplaceFailure(err, t));
+                    resolve(false);
+                }
+            };
+
+            const open = (current: CompleteBackupPreview, fingerprint: string) => {
+                showDialog(
+                    'confirm',
+                    describeCompleteBackupReplace(current, { t, lang, user }),
+                    () => {
+                        // The active arrays can change while the dialog is open.
+                        // Replacing them without showing the new contents would
+                        // be consent to a different operation.
+                        const latest = completeBackupRef.current.preview(parsed);
+                        if (!latest.ok || latest.issues.length > 0 || requiredMissing(latest).length > 0) {
+                            reject(latest);
+                            return;
+                        }
+                        const latestFingerprint = completeBackupPreviewFingerprint(latest);
+                        if (latestFingerprint !== fingerprint) {
+                            open(latest, latestFingerprint);
+                            return;
+                        }
+                        run();
+                    },
+                    {
+                        danger: true,
+                        title: t('import.replace_complete_title'),
+                        confirmLabel: t('import.replace_complete_btn'),
+                        onCancel: () => resolve(false),
+                    },
+                );
+            };
+
+            open(preview, completeBackupPreviewFingerprint(preview));
+        });
+
+    const replaceCompleteBackupFromJson = async (text: string): Promise<boolean> => {
+        try {
+            let parsed = JSON.parse(text);
+            if (parsed && typeof parsed === 'object' && parsed.c && typeof parsed.c === 'string') {
+                parsed = JSON.parse(await decompressData(parsed.c));
+            }
+            if (!parsed || typeof parsed !== 'object' || parsed.format !== COMPLETE_BACKUP_FORMAT) {
+                showDialog('alert', t('import.bundle_invalid'));
+                return false;
+            }
+            return await confirmCompleteBackupReplace(parsed);
+        } catch (err) {
+            console.error(err);
+            showDialog('alert', t('drawer.import_error'));
+            return false;
+        }
+    };
 
     const importEventsFromJson = async (text: string): Promise<boolean> => {
         try {
@@ -974,6 +1068,7 @@ const AppContent = () => {
                     {currentView === 'settings-import' && (
                         <ImportSettings
                             onImportJson={importEventsFromJson}
+                            onReplaceJson={replaceCompleteBackupFromJson}
                             onBack={() => handleViewChange('settings')}
                             onNavigateToExport={() => handleViewChange('settings-export')}
                         />

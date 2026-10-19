@@ -235,6 +235,19 @@ export const TRANSLATIONS_BASE = {
         'import.paste_hint': '在此处粘贴 JSON 内容...',
         'import.file': '选择 JSON 文件',
         'import.file_btn': '选择文件',
+        'import.replace_complete_row': '用完整备份替换本机',
+        'import.replace_complete_desc': '用完整备份文件替换全部记录和校准设置，不与现有数据合并。',
+        'import.replace_complete_file_btn': '选择文件',
+        'import.replace_complete_paste_btn': '替换本机',
+        'import.replace_complete_title': '用完整备份替换本机？',
+        'import.replace_complete_message':
+            '这是 {date} 的备份，包含 {n} 条记录和删除记录。本机的所有用药记录、检查结果、模板、快捷剂量、药量库存、用药方案、删除记录和校准设置都会被它替换。',
+        'import.replace_complete_journal':
+            '应用前会先写恢复日志；中途中断会回滚。但替换后无法撤销，只能再用另一份备份恢复。',
+        'import.replace_complete_btn': '全部替换',
+        'import.replace_complete_success': '完整备份已恢复到本机。',
+        'import.replace_complete_failed': '恢复失败，本机数据没有改变。',
+        'import.replace_complete_partial': '恢复没有完成，可能有部分数据已经写入；请重新加载应用以执行恢复日志。',
 
         'error.nonPositive': '不能输入小于等于 0 的值。',
         'error.weightRange': '体重需在 20 到 400 公斤之间。',
@@ -1146,6 +1159,21 @@ export const TRANSLATIONS_BASE = {
         'import.paste_hint': 'Paste JSON content here...',
         'import.file': 'Select JSON File',
         'import.file_btn': 'Choose File',
+        'import.replace_complete_row': 'Replace this device from a complete backup',
+        'import.replace_complete_desc':
+            'Replace every record and the calibration from a complete backup file. This does not merge.',
+        'import.replace_complete_file_btn': 'Choose File',
+        'import.replace_complete_paste_btn': 'Replace device',
+        'import.replace_complete_title': 'Replace this device from a complete backup?',
+        'import.replace_complete_message':
+            'This backup is from {date} and holds {n} records and deletion entries. It replaces every dose, lab result, template, quick dose, supply, plan entry, deletion record, and the calibration on this device.',
+        'import.replace_complete_journal':
+            'The app writes a recovery journal first and rolls back if it is interrupted. The replace still cannot be undone except by restoring another backup.',
+        'import.replace_complete_btn': 'Replace everything',
+        'import.replace_complete_success': 'Complete backup restored.',
+        'import.replace_complete_failed': 'Restore failed. Nothing on this device was changed.',
+        'import.replace_complete_partial':
+            'The restore did not finish, and part of it may already have been written. Reload the app so it can recover the journal.',
 
         'error.nonPositive': 'Value must be greater than zero.',
         'error.weightRange': 'Weight must be between 20 and 400 kg.',

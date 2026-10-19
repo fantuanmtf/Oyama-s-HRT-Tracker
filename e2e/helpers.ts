@@ -184,6 +184,16 @@ export async function pasteAndImport(page: Page, text: string): Promise<void> {
     await page.getByRole('button', { name: 'Import', exact: true }).click();
 }
 
+export async function pasteAndReplace(page: Page, text: string): Promise<void> {
+    await openImport(page);
+    const box = page.getByPlaceholder('Paste JSON content here...');
+    if (!(await box.isVisible())) {
+        await page.getByRole('button', { name: /Paste JSON Text/ }).click();
+    }
+    await box.fill(text);
+    await page.getByRole('button', { name: 'Replace device', exact: true }).click();
+}
+
 export function dialogMessage(page: Page): ReturnType<Page['locator']> {
     return page.locator('#app-dialog-message');
 }
