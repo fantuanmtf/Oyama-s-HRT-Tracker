@@ -9,7 +9,7 @@ are the complete-backup review fixes on `agent/add-gpg-website`.
 | Side    | Revision                                 | Evidence                                                     |
 | ------- | ---------------------------------------- | ------------------------------------------------------------ |
 | Website | `agent/add-gpg-website` (PR head)        | `src/utils/backupBundle.ts`, `src/utils/backupState.ts`      |
-| Tools   | `Recovery/Tools` @ `7ee628b` (read-only) | `tools/hrt-cold/bundle.go`, `tools/hrt-cold/README.md`       |
+| Tools   | `Recovery/Tools` @ `84a44ea` (read-only) | `tools/hrt-cold/bundle.go`, `tools/hrt-cold/README.md`       |
 | Format  | —                                        | `Recovery/Tools:docs/backup-schema-audit/TOOLS_INTERFACE.md` |
 
 The Tools `hrt-cold` validator checks the hand-off envelope and container
@@ -18,6 +18,12 @@ rules. The website importer remains authoritative for record validation, merge
 behavior, and conflicts. The vectors below were derived by reading both
 implementations; they are not a cross-language conformance run and no Tools
 tests were executed for this document.
+
+Tools can now sign the plaintext bundle and verify it against a pinned key.
+The signature lives inside the encrypted payload, so the envelope and `.hrtb`
+bytes are unchanged. A verified Tools decrypt also keeps a local replay
+high-water mark. The website's direct plaintext import remains unauthenticated:
+it has no keys or signature to check.
 
 **Authority is path-dependent**
 
