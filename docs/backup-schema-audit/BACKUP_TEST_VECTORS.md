@@ -6,11 +6,11 @@ are the complete-backup review fixes on `agent/add-gpg-website`.
 
 **Compared revisions**
 
-| Side    | Revision                                 | Evidence                                                     |
-| ------- | ---------------------------------------- | ------------------------------------------------------------ |
-| Website | `agent/add-gpg-website` (PR head)        | `src/utils/backupBundle.ts`, `src/utils/backupState.ts`      |
-| Tools   | `Recovery/Tools` @ `84a44ea` (read-only) | `tools/hrt-cold/bundle.go`, `tools/hrt-cold/README.md`       |
-| Format  | —                                        | `Recovery/Tools:docs/backup-schema-audit/TOOLS_INTERFACE.md` |
+| Side    | Revision                                          | Evidence                                                     |
+| ------- | ------------------------------------------------- | ------------------------------------------------------------ |
+| Website | `agent/add-gpg-website` (PR head)                 | `src/utils/backupBundle.ts`, `src/utils/backupState.ts`      |
+| Tools   | `Recovery/Tools` @ `d2ef418` (signing, read-only) | `tools/hrt-cold/bundle.go`, `tools/hrt-cold/README.md`       |
+| Format  | —                                                 | `Recovery/Tools:docs/backup-schema-audit/TOOLS_INTERFACE.md` |
 
 The Tools `hrt-cold` validator checks the hand-off envelope and container
 shapes; it does **not** validate clinical record semantics or apply restore
@@ -108,7 +108,9 @@ should carry an account identifier is **UNRESOLVED** and out of scope here.
   bundles, writes one recovery journal before touching records, rolls back on a
   failed write, and replays or finishes the journal at the next app start.
   `e2e/replace.spec.ts` covers success, refusal, rollback, and both recovery
-  phases. This is an application-level transaction over localStorage, not a
+  phases. The journal needs free localStorage headroom for the target data;
+  if it cannot be written, Replace aborts before touching records. This is an
+  application-level transaction over localStorage, not a
   browser primitive; no production-restore claim is made.
 - No claim is made about production readiness, OpenPGP key handling, License
   Gate approval, or Docker.
