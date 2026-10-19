@@ -8,7 +8,7 @@ are the complete-backup review fixes on `agent/add-gpg-website`.
 
 | Side    | Revision                                 | Evidence                                                |
 | ------- | ---------------------------------------- | ------------------------------------------------------- |
-| Website | `agent/add-gpg-website` @ `0d813d4`      | `src/utils/backupBundle.ts`, `src/utils/backupState.ts` |
+| Website | `agent/add-gpg-website` @ `2880bb5`      | `src/utils/backupBundle.ts`, `src/utils/backupState.ts` |
 | Tools   | `Recovery/Tools` @ `7ee628b` (read-only) | `tools/hrt-cold/bundle.go`, `tools/hrt-cold/README.md`  |
 | Format  | —                                        | `docs/backup-schema-audit/TOOLS_INTERFACE.md`           |
 
