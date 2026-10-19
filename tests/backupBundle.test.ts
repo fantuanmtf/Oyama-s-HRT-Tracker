@@ -523,6 +523,18 @@ describe('complete backup bundle data layer', () => {
         );
     });
 
+    it('adds no source-account identifier and leaves formatVersion at 1', () => {
+        const bundle = build(seed());
+
+        expect(bundle.formatVersion).toBe(1);
+        for (const field of ['account', 'accountId', 'sourceAccount', 'sourceAccountId', 'owner', 'user']) {
+            expect(bundle).not.toHaveProperty(field);
+        }
+        const serialized = JSON.stringify(bundle);
+        expect(serialized).not.toContain('auth_user');
+        expect(serialized).not.toContain('sourceAccount');
+    });
+
     it('does not write anything when the envelope version is unknown', () => {
         const storage = new MemoryStorage();
         const result = inspectCompleteBackupBundle(

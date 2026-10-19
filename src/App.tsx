@@ -11,6 +11,7 @@ import { PlanItem, planEvent } from './utils/plan';
 import Plan from './pages/Plan';
 import { parseCloudBackup } from './utils/cloudBackup';
 import { COMPLETE_BACKUP_FORMAT, type CompleteBackupPreview, type PortablePreferences } from './utils/backupBundle';
+import { describeCompleteBackupAccountWarning, describeCompleteBackupExportWarning } from './utils/backupWarnings';
 import { useAppData } from './hooks/useAppData';
 import { useAppNavigation, tabForView, ViewKey } from './hooks/useAppNavigation';
 import Forecast from './pages/Forecast';
@@ -353,6 +354,9 @@ const AppContent = () => {
     /** Counts, deletion ids and scalar changes shown before a complete bundle is merged. */
     const describeCompleteBackupPreview = (preview: CompleteBackupPreview): string => {
         const lines = [t('import.bundle_unencrypted_warning')];
+        // Name the account receiving the merge, then state that the bundle has
+        // no source-account field to compare against it.
+        lines.push(...describeCompleteBackupAccountWarning(user, t).lines);
         if (preview.createdAt) lines.push(`${t('import.bundle_created')} ${preview.createdAt}`);
         if (preview.sourceMode) lines.push(`${t('import.bundle_source_mode')} ${preview.sourceMode}`);
         if (preview.sourceMode && preview.sourceMode !== mode) lines.push(t('import.bundle_mode_warning'));
@@ -470,6 +474,7 @@ const AppContent = () => {
                 });
             };
             showDialog('confirm', describeCompleteBackupPreview(preview), confirmMerge, {
+                danger: true,
                 title: t('import.bundle_preview_title'),
                 confirmLabel: t('import.bundle_merge_btn'),
                 onCancel: () => resolve(false),
@@ -602,13 +607,26 @@ const AppContent = () => {
     /**
      * The complete bundle is deliberately plaintext JSON. OpenPGP encryption is
      * the offline Tools project's job; this website never handles keys or
-     * passphrases and does not claim a cold-backup encryption format.
+     * passphrases and does not claim a cold-backup encryption format. The
+     * download stays behind an explicit plaintext-health-data confirmation.
      */
     const handleCompleteBackupExport = () => {
-        const bundle = buildCompleteBackupBundle();
-        downloadFile(
-            JSON.stringify(bundle, null, 2),
-            `hrt-complete-backup-${new Date().toISOString().split('T')[0]}.json`,
+        const warning = describeCompleteBackupExportWarning(t);
+        showDialog(
+            'confirm',
+            warning.message,
+            () => {
+                const bundle = buildCompleteBackupBundle();
+                downloadFile(
+                    JSON.stringify(bundle, null, 2),
+                    `hrt-complete-backup-${new Date().toISOString().split('T')[0]}.json`,
+                );
+            },
+            {
+                danger: true,
+                title: warning.title,
+                confirmLabel: warning.confirmLabel,
+            },
         );
     };
 

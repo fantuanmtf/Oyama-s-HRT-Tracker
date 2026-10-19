@@ -271,6 +271,10 @@ export const TRANSLATIONS_BASE = {
         'export.complete_btn': '下载完整备份',
         'export.complete_warning':
             '完整备份是未加密的 JSON。请勿直接上传或分享；OpenPGP 加密/解密由离线 Tools 流程负责，网站不处理私钥或口令。',
+        'export.complete_confirm_title': '下载未加密的健康数据？',
+        'export.complete_confirm_message':
+            '完整备份是未加密的纯文本 JSON，包含你的健康记录；任何拿到文件的人都能读取。下载后请使用离线 Tools 命令行（hrt-cold encrypt）加密，再存储或分享。本网站不会加密此文件。',
+        'export.complete_confirm_btn': '下载纯文本备份',
         'import.complete_title': '完整备份（未加密）',
         'import.complete_note':
             '完整备份是未加密的 JSON，包含记录、用品、方案、校准和设置。网站不会添加 OpenPGP 加密，也不处理私钥或口令；加密与解密请使用离线 Tools 流程。',
@@ -279,6 +283,10 @@ export const TRANSLATIONS_BASE = {
             '普通 JSON 或加密记录导入会替换这台设备上的记录。完整备份导入只执行合并，绝不会清空本地数据。',
         'import.bundle_preview_title': '导入完整备份？',
         'import.bundle_unencrypted_warning': '此文件未加密。',
+        'import.bundle_target_account': '本次合并的目标账户：',
+        'import.bundle_target_local': '本机（未登录）',
+        'import.bundle_account_warning':
+            '完整备份格式不记录它来自哪个账户，因此文件可能来自其他账户，合并时无法自动识别。请确认下面的预览属于此账户，再继续合并。',
         'import.bundle_created': '创建时间：',
         'import.bundle_source_mode': '来源模式：',
         'import.bundle_conflicts': '冲突',
@@ -1182,6 +1190,10 @@ export const TRANSLATIONS_BASE = {
         'export.complete_btn': 'Download complete backup',
         'export.complete_warning':
             'The complete backup is unencrypted JSON. Do not upload or share it directly. OpenPGP encryption/decryption belongs to the offline Tools workflow; this website does not handle private keys or passphrases.',
+        'export.complete_confirm_title': 'Download unencrypted health data?',
+        'export.complete_confirm_message':
+            'The complete backup is unencrypted plaintext JSON containing your health records; anyone who gets the file can read it. After downloading, encrypt it with the offline Tools CLI (hrt-cold encrypt) before storing or sharing. This website does not encrypt this file.',
+        'export.complete_confirm_btn': 'Download plaintext',
         'import.complete_title': 'Complete backup (unencrypted)',
         'import.complete_note':
             'A complete backup is unencrypted JSON containing records, supplies, plan, calibration and settings. This website does not add OpenPGP encryption and does not handle private keys or passphrases; use the offline Tools workflow to encrypt or decrypt it.',
@@ -1190,6 +1202,10 @@ export const TRANSLATIONS_BASE = {
             "A regular JSON or encrypted record import replaces this device's records. Complete-backup import merges only and never clears local data.",
         'import.bundle_preview_title': 'Import complete backup?',
         'import.bundle_unencrypted_warning': 'This file is not encrypted.',
+        'import.bundle_target_account': 'Target account for this merge:',
+        'import.bundle_target_local': 'this device (not signed in)',
+        'import.bundle_account_warning':
+            'This backup format does not record which account it came from, so the file may belong to a different account and a merge cannot detect that. Check that the preview below belongs to this account before continuing.',
         'import.bundle_created': 'Created:',
         'import.bundle_source_mode': 'Source mode:',
         'import.bundle_conflicts': 'Conflicts',
