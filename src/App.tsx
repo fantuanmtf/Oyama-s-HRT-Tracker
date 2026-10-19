@@ -14,11 +14,17 @@ import {
     COMPLETE_BACKUP_FORMAT,
     classifyCompleteBackupOutcome,
     completeBackupPreviewFingerprint,
-    formatIds,
+    type CompleteBackupMergeResult,
     type CompleteBackupPreview,
     type PortablePreferences,
 } from './utils/backupBundle';
-import { describeCompleteBackupAccountWarning, describeCompleteBackupExportWarning } from './utils/backupWarnings';
+import {
+    describeCompleteBackupExportWarning,
+    describeCompleteBackupFailure,
+    describeCompleteBackupPreview,
+    describeCompleteBackupResult,
+    describeUnreadableCompleteBackup,
+} from './utils/backupWarnings';
 import { useAppData } from './hooks/useAppData';
 import { useAppNavigation, tabForView, ViewKey } from './hooks/useAppNavigation';
 import Forecast from './pages/Forecast';
@@ -355,91 +361,6 @@ const AppContent = () => {
             });
         });
 
-    const bundleCountLine = (preview: CompleteBackupPreview, mode: 'transfem' | 'transmasc') => {
-        const c = preview.counts[mode];
-        return `${mode}: events ${c.events}, labs ${c.labResults}, templates ${c.doseTemplates}, quick doses ${c.quickDoses}, supplies ${c.supplies}, plan ${c.plan}, deletions ${c.deletions}`;
-    };
-
-    const actionLabel = (action: string): string => t(`import.bundle_action_${action}`);
-
-    const pkChangeSummary = (current: unknown, incoming: unknown): string => {
-        const currentValues = (current ?? {}) as Record<string, unknown>;
-        const incomingValues = (incoming ?? {}) as Record<string, unknown>;
-        const keys = new Set([...Object.keys(currentValues), ...Object.keys(incomingValues)]);
-        const changed = [...keys].filter(key => currentValues[key] !== incomingValues[key]);
-        if (changed.length === 0) return t('import.bundle_action_unchanged');
-        return changed
-            .slice(0, 8)
-            .map(key => `${key}: ${String(currentValues[key] ?? '—')} -> ${String(incomingValues[key] ?? '—')}`)
-            .join(', ');
-    };
-
-    /** Counts, deletion ids and scalar changes shown before a complete bundle is merged. */
-    const describeCompleteBackupPreview = (preview: CompleteBackupPreview): string => {
-        const lines = [t('import.bundle_unencrypted_warning')];
-        // Name the account receiving the merge, then state that the bundle has
-        // no source-account field to compare against it.
-        lines.push(...describeCompleteBackupAccountWarning(user, t).lines);
-        if (preview.createdAt) lines.push(`${t('import.bundle_created')} ${preview.createdAt}`);
-        if (preview.sourceMode) lines.push(`${t('import.bundle_source_mode')} ${preview.sourceMode}`);
-        if (preview.sourceMode && preview.sourceMode !== mode) lines.push(t('import.bundle_mode_warning'));
-        lines.push(bundleCountLine(preview, 'transfem'));
-        lines.push(bundleCountLine(preview, 'transmasc'));
-
-        const deletionLines = preview.deletionImpact.filter(
-            impact =>
-                impact.incoming > 0 ||
-                impact.removedLocal > 0 ||
-                impact.protectedIds.length > 0 ||
-                impact.droppedIds.length > 0,
-        );
-        if (deletionLines.length) {
-            lines.push(`${t('import.bundle_deletions')}:`);
-            for (const impact of deletionLines) {
-                let line = `  ${impact.mode}.${impact.kind}: ${impact.incoming} incoming, ${impact.removedLocal} local removed`;
-                if (impact.removedIds.length) line += ` (${formatIds(impact.removedIds)})`;
-                if (impact.protectedIds.length) line += `; kept local ${formatIds(impact.protectedIds)}`;
-                if (impact.droppedIds.length) line += `; rejected ${formatIds(impact.droppedIds)}`;
-                lines.push(line);
-            }
-        }
-
-        if (preview.scalars.weight) {
-            const change = preview.scalars.weight;
-            lines.push(
-                `${t('import.bundle_weight_change')}: ${change.current ?? '—'} -> ${change.incoming} (${actionLabel(
-                    change.action,
-                )})`,
-            );
-        }
-        if (preview.scalars.pkParams) {
-            const change = preview.scalars.pkParams;
-            lines.push(
-                `${t('import.bundle_pk_change')}: ${pkChangeSummary(change.current, change.incoming)} (${actionLabel(
-                    change.action,
-                )})`,
-            );
-        }
-        if (preview.scalars.calibration) {
-            const change = preview.scalars.calibration;
-            lines.push(
-                `${t('import.bundle_calibration_change')}: ${change.current.method}/${change.current.historyMode} -> ${
-                    change.incoming.method
-                }/${change.incoming.historyMode} (${actionLabel(change.action)})`,
-            );
-        }
-
-        if (preview.conflicts.length) lines.push(`${t('import.bundle_conflicts')}:\n${preview.conflicts.join('\n')}`);
-        if (preview.blocked.length) lines.push(`${t('import.bundle_blocked')}: ${preview.blocked.join(', ')}`);
-        if (preview.issues.length) lines.push(`${t('import.bundle_issues')}: ${preview.issues.join('; ')}`);
-        if (preview.preferences.ignored.length)
-            lines.push(`${t('import.bundle_ignored_preferences')}: ${preview.preferences.ignored.join(', ')}`);
-        if (preview.preferences.invalid.length)
-            lines.push(`${t('import.bundle_invalid_preferences')}: ${preview.preferences.invalid.join(', ')}`);
-        lines.push(t('import.bundle_merge_note'));
-        return lines.join('\n');
-    };
-
     /**
      * Complete bundles are unencrypted JSON and merge only. Replace-all remains
      * BLOCKED: there is no proven multi-key transaction, so this path never
@@ -447,64 +368,51 @@ const AppContent = () => {
      */
     const confirmCompleteBackupImport = (parsed: unknown): Promise<boolean> =>
         new Promise(resolve => {
+            // The validator's messages name fields and record ids. They are for
+            // whoever looks into the file, so they go to the console and the
+            // person is told only that the file can't be read, or is too new.
+            const rejectUnreadable = (unreadable: CompleteBackupPreview) => {
+                console.warn('Complete backup not imported:', unreadable.errors);
+                showDialog('alert', describeUnreadableCompleteBackup(unreadable, t));
+                resolve(false);
+            };
+
             const preview = completeBackupRef.current.preview(parsed);
             if (!preview.ok) {
-                showDialog('alert', `${t('import.bundle_invalid')}\n${preview.errors.join('\n')}`);
-                resolve(false);
+                rejectUnreadable(preview);
                 return;
+            }
+            if (preview.issues.length || preview.conflicts.length) {
+                console.warn('Complete backup preview:', { issues: preview.issues, conflicts: preview.conflicts });
             }
 
             const run = () => {
+                let result: CompleteBackupMergeResult;
                 try {
-                    const result = completeBackupRef.current.apply(parsed);
-                    const outcome = classifyCompleteBackupOutcome(result);
-                    if (outcome === 'nothing') {
-                        showDialog(
-                            'alert',
-                            `${t('import.bundle_merge_failed')}\n${t('import.bundle_blocked')}: ${result.blocked.join(', ')}`,
-                        );
-                        resolve(false);
-                        return;
-                    }
-                    applyPortablePreferences(result.preferences);
-                    if (outcome === 'settings-only') {
-                        const blocked = result.blocked.length
-                            ? `\n${t('import.bundle_blocked')}: ${result.blocked.join(', ')}`
-                            : '';
-                        showDialog('alert', `${t('import.bundle_settings_only')}${blocked}`);
-                        resolve(true);
-                        return;
-                    }
-                    const message = (
-                        result.blocked.length
-                            ? t('import.bundle_merge_success_blocked')
-                            : t('import.bundle_merge_success')
-                    )
-                        .replace('{added}', String(result.added))
-                        .replace('{updated}', String(result.updated))
-                        .replace('{removed}', String(result.removed))
-                        .replace('{blocked}', result.blocked.join(', '));
-                    showDialog('alert', message);
-                    resolve(true);
+                    result = completeBackupRef.current.apply(parsed);
                 } catch (err) {
                     console.error(err);
-                    showDialog('alert', t('import.bundle_merge_failed'));
+                    showDialog('alert', describeCompleteBackupFailure(err, t));
                     resolve(false);
+                    return;
                 }
+                const outcome = classifyCompleteBackupOutcome(result);
+                applyPortablePreferences(result.preferences);
+                showDialog('alert', describeCompleteBackupResult(result, outcome, t));
+                resolve(outcome !== 'nothing');
             };
 
             const openPreview = (current: CompleteBackupPreview) => {
                 showDialog(
                     'confirm',
-                    describeCompleteBackupPreview(current),
+                    describeCompleteBackupPreview(current, { t, lang, user }),
                     () => {
                         // The active arrays can change while a dialog is open.
                         // Recompute at confirm time; if the visible outcome
                         // changed, show it again instead of applying stale consent.
                         const latest = completeBackupRef.current.preview(parsed);
                         if (!latest.ok) {
-                            showDialog('alert', `${t('import.bundle_invalid')}\n${latest.errors.join('\n')}`);
-                            resolve(false);
+                            rejectUnreadable(latest);
                             return;
                         }
                         if (completeBackupPreviewFingerprint(latest) !== completeBackupPreviewFingerprint(current)) {
@@ -526,11 +434,7 @@ const AppContent = () => {
                             () => {
                                 const finalPreview = completeBackupRef.current.preview(parsed);
                                 if (!finalPreview.ok) {
-                                    showDialog(
-                                        'alert',
-                                        `${t('import.bundle_invalid')}\n${finalPreview.errors.join('\n')}`,
-                                    );
-                                    resolve(false);
+                                    rejectUnreadable(finalPreview);
                                     return;
                                 }
                                 run();
@@ -698,13 +602,15 @@ const AppContent = () => {
                         JSON.stringify(report.bundle, null, 2),
                         `hrt-complete-backup-${new Date().toISOString().split('T')[0]}.json`,
                     );
-                    if (report.issues.length) {
-                        showDialog('alert', `${t('export.complete_skipped')}\n${report.issues.join('\n')}`);
+                    // Collapsed duplicates and expired deletion marks are
+                    // housekeeping; only records left out are worth a word.
+                    if (report.issues.length) console.warn('Complete backup export:', report.issues);
+                    if (report.invalidRecords > 0) {
+                        showDialog('alert', t('export.complete_skipped').replace('{n}', String(report.invalidRecords)));
                     }
                 } catch (err) {
                     console.error(err);
-                    const detail = err instanceof Error && err.message ? `\n${err.message}` : '';
-                    showDialog('alert', `${t('export.complete_failed')}${detail}`);
+                    showDialog('alert', t('export.complete_failed'));
                 }
             },
             {

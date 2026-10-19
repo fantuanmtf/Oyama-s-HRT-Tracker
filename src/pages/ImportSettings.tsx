@@ -11,8 +11,13 @@ interface ImportSettingsProps {
     onNavigateToExport?: () => void;
 }
 
+// No space after a CJK full stop, which carries its own.
+const gapAfter = (sentence: string) => (/[。！？]$/.test(sentence) ? '' : ' ');
+
 const ImportSettings: React.FC<ImportSettingsProps> = ({ onImportJson, onBack, onNavigateToExport }) => {
     const { t } = useTranslation();
+    const replaceNote = t('import.replace_note');
+    const completeNote = t('import.complete_note');
 
     return (
         <div className="relative space-y-4 pb-32">
@@ -20,14 +25,15 @@ const ImportSettings: React.FC<ImportSettingsProps> = ({ onImportJson, onBack, o
 
             <div className={PAGE_COLUMN}>
                 {/* Said before a file is chosen, not only in the confirm after:
-                    a regular record import replaces, while a complete-backup
-                    import merges only. The way to keep what is here is to
-                    export it first. */}
+                    a regular record import replaces, while a complete backup
+                    merges. The way to keep what is here is to export it first. */}
                 <div className="callout mt-1 mb-2">
-                    {t('import.replace_or_merge_note')}
+                    {replaceNote}
+                    {gapAfter(replaceNote)}
+                    {completeNote}
                     {onNavigateToExport && (
                         <>
-                            {' '}
+                            {gapAfter(completeNote)}
                             <button
                                 type="button"
                                 onClick={onNavigateToExport}
@@ -37,10 +43,6 @@ const ImportSettings: React.FC<ImportSettingsProps> = ({ onImportJson, onBack, o
                             </button>
                         </>
                     )}
-                </div>
-                <div className="callout mt-1 mb-2">
-                    <strong className="font-medium text-[var(--text)]">{t('import.complete_title')}</strong>{' '}
-                    {t('import.complete_note')} {t('import.complete_merge_only')}
                 </div>
                 <ImportSection onImportJson={onImportJson} />
             </div>

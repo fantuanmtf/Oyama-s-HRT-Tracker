@@ -1025,6 +1025,7 @@ describe('complete backup bundle data layer', () => {
         expect(report.duplicateIds).toEqual(['tf-e1']);
         expect(report.issues.join(' ')).toContain('duplicate id');
         expect(report.droppedRecords).toBe(1);
+        expect(report.invalidRecords).toBe(0);
         expect(report.bundle.modes.transfem.events).toHaveLength(1);
         expect(report.bundle.modes.transfem.events?.[0].doseMG).toBe(9);
 
@@ -1054,6 +1055,7 @@ describe('complete backup bundle data layer', () => {
 
         const report = buildReport(storage);
         expect(report.droppedRecords).toBe(1);
+        expect(report.invalidRecords).toBe(1);
         expect(report.issues.join(' ')).toContain('unknown route');
         expect(report.bundle.modes.transfem.events?.map(item => item.id)).toEqual(['good']);
         const preview = inspectCompleteBackupBundle(report.bundle, context(new MemoryStorage()));

@@ -162,9 +162,9 @@ const ExportSection: React.FC<ExportSectionProps> = ({
                         )}
 
                         {/* Encrypted JSON. Once a password is on screen the row stops
-                    being a toggle: that password is the only way into the file
-                    just saved, so a stray tap on the title must not wipe it.
-                    Only the panel's own OK closes it then. */}
+                            being a toggle: that password is the only way into the file
+                            just saved, so a stray tap on the title must not wipe it.
+                            Only the panel's own OK closes it then. */}
                         <div>
                             <button
                                 onClick={() => {
@@ -280,12 +280,6 @@ const ExportSection: React.FC<ExportSectionProps> = ({
                     </>
                 )}
             </div>
-
-            {onExportCompleteBackup && (
-                <p className="mt-2 px-1 text-xs leading-relaxed text-[var(--text-muted)]">
-                    {t('export.complete_warning')}
-                </p>
-            )}
 
             {/* Where a copy's result is announced, failed or done. It stays
                 mounted, outside the rows, because a button's contents are read

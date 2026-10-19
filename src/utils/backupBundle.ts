@@ -803,6 +803,8 @@ export interface CompleteBackupExportReport {
     issues: string[];
     /** Records present in storage but absent from the bundle. */
     droppedRecords: number;
+    /** The part of droppedRecords that failed validation, not a collapsed duplicate. */
+    invalidRecords: number;
     duplicateIds: string[];
 }
 
@@ -810,6 +812,7 @@ interface CleanExportRecords<T> {
     values: T[];
     issues: string[];
     droppedRecords: number;
+    invalidRecords: number;
     duplicateIds: string[];
 }
 
@@ -826,7 +829,13 @@ const cleanExportRecords = <T>(
     now: number,
 ): CleanExportRecords<T> => {
     if (!Array.isArray(items)) {
-        return { values: [], issues: [`${path}: expected an array`], droppedRecords: 0, duplicateIds: [] };
+        return {
+            values: [],
+            issues: [`${path}: expected an array`],
+            droppedRecords: 0,
+            invalidRecords: 0,
+            duplicateIds: [],
+        };
     }
     if (items.length > MAX_IMPORT_ENTRIES) {
         throw new CompleteBackupExportError([
@@ -868,7 +877,7 @@ const cleanExportRecords = <T>(
     const invalidRecords = items.length - valid.length;
     if (invalidRecords > 0) issues.push(`${path}: dropped ${invalidRecords} invalid record(s)`);
     const droppedRecords = items.length - values.length;
-    return { values, issues, droppedRecords, duplicateIds: duplicates };
+    return { values, issues, droppedRecords, invalidRecords, duplicateIds: duplicates };
 };
 
 const cleanExportTombstoneMap = (raw: TombstoneMap, path: string, now: number, issues: string[]): TombstoneMap => {
@@ -950,6 +959,7 @@ export function buildCompleteBackupBundleReportFromStorage(
     const issues: string[] = [];
     const duplicateIds = new Set<string>();
     let droppedRecords = 0;
+    let invalidRecords = 0;
 
     const readMode = (mode: ModeKey): CompleteBackupMode => {
         const block: CompleteBackupMode = {};
@@ -963,6 +973,7 @@ export function buildCompleteBackupBundleReportFromStorage(
             block[category] = cleaned.values;
             issues.push(...cleaned.issues);
             droppedRecords += cleaned.droppedRecords;
+            invalidRecords += cleaned.invalidRecords;
             cleaned.duplicateIds.forEach(id => duplicateIds.add(id));
         }
         block.deletions = cleanExportTombstones(
@@ -1020,6 +1031,7 @@ export function buildCompleteBackupBundleReportFromStorage(
         },
         issues,
         droppedRecords,
+        invalidRecords,
         duplicateIds: [...duplicateIds],
     };
 }
