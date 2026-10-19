@@ -317,7 +317,7 @@ change protection rules.
 - **Branch/worktree:** `agent/add-gpg-website` in
   `/tmp/opencode/hrt-fix-website-p0`; base `32edc7068423916f8ab7cfa416ae7bf31d2f7609`.
 - **Fix commit:** `d4b47a9` — `fix: harden complete-backup merge against unsafe
-  tombstones and timestamps`.
+tombstones and timestamps`.
 - **Files:** `src/utils/backupBundle.ts`, `src/utils/backupState.ts`,
   `src/App.tsx`, `src/pages/ImportSettings.tsx`, `src/i18n/translations.ts`,
   `tests/backupBundle.test.ts`.
@@ -393,3 +393,61 @@ deletion counts/ids.
   snapshot rollback.
 - Push status: this handoff update is committed after `d4b47a9`; the final
   remote SHA is recorded at the checkpoint.
+
+## Website complete-backup confirmation supplements (2026-10-19)
+
+- **Branch/worktree:** `agent/add-gpg-website` in
+  `/tmp/opencode/hrt-fix-website-p0`; base `82381f9b1f7db3fd866ee21d563ca6e3b64a274d`.
+- **Code + tests commit:** `23637e4` — account and plaintext confirmations.
+- **Files:**
+  - `src/utils/backupWarnings.ts` — pure account-target and plaintext-warning
+    copy helpers; no bundle fields.
+  - `src/App.tsx` — preview names the current target account, warns that the
+    format has no source-account identifier, makes the merge confirmation a
+    danger confirm, and gates the complete-backup download behind an explicit
+    plaintext-health-data confirmation.
+  - `src/i18n/translations.ts` — Chinese and English copy for both
+    confirmations; other packs fall back as before.
+  - `tests/backupWarnings.test.ts` — five synthetic copy/account-target tests
+    using the shipped English and Chinese strings.
+  - `tests/backupBundle.test.ts` — one invariant test: no source-account field
+    is added and `formatVersion` stays `1`.
+  - `docs/backup-schema-audit/BACKUP_TEST_VECTORS.md` — website/Tools acceptance
+    boundary vectors and authority/status.
+- **Account warning:** uses the existing `useAuth()` user; shows the username
+  when signed in or `this device (not signed in)` otherwise. It states that the
+  bundle format records no source account, so a cross-account merge cannot be
+  detected. No account ID was added to the envelope and `formatVersion` was not
+  changed.
+- **Plaintext export:** the download now requires a confirm whose copy says the
+  bundle is unencrypted plaintext health data, recommends the offline Tools CLI
+  (`hrt-cold encrypt`), and states that the website does not encrypt the file.
+  Encrypted JSON, regular JSON, clipboard, CSV and PDF export paths are
+  unchanged.
+- **Parity document:** BTV-1 calibration `average`/`adaptive` (website
+  authoritative), BTV-2 `createdAt` date-only vs RFC 3339 (Tools authoritative),
+  BTV-3 `formatVersion: 1.0` (UNRESOLVED), BTV-4 duplicate JSON keys (Tools
+  authoritative), BTV-5 `weight: null` and BTV-6 `weightUpdatedAt: 0` (website
+  authoritative), BTV-7 unknown per-record fields (UNRESOLVED), and BTV-8
+  tombstone TTL/skew/cap (website authoritative).
+- **Checks actually run:**
+  - `npx tsc --noEmit` — pass (no output).
+  - Focused backup tests (`backupWarnings`, `backupBundle`) — 2 files passed;
+    26 tests passed.
+  - Full Vitest run — 19 files passed; 403 passed, 4 expected fail (407 total);
+    14.33s.
+  - `npx prettier --check` on all changed source/test/doc files — pass.
+  - `npx eslint` on changed TS/TSX files — 0 errors; 1 pre-existing
+    `@typescript-eslint/no-explicit-any` warning in `src/App.tsx`.
+  - `npm run build` — Vite production build pass; existing large-chunk warning
+    only.
+  - `git diff --check` — pass.
+- **Not changed / not claimed:** no Tools/CLI change, no OpenPGP/key/passphrase
+  work, no new runtime dependency, no schema or `formatVersion` change, no
+  Replace, signing, key management, L3, production restore rollback, browser
+  end-to-end test, License Gate, Docker, or production approval.
+- **Unresolved:** BTV-3 (`formatVersion: 1.0`) and BTV-7 (unknown per-record
+  fields) remain product/interface decisions. A future source-account field is
+  out of scope. Cross-account detection is impossible with the current format.
+- **Push:** pending at the time of this handoff; the final checkpoint records
+  the remote SHA for `origin/agent/add-gpg-website`.
