@@ -6,12 +6,15 @@ import {
     type CompleteBackupMergeResult,
     type CompleteBackupPreview,
 } from '../src/utils/backupBundle';
+import { REPLACE_PARTIAL_MESSAGE } from '../src/utils/replaceJournal';
 import {
     describeBundlePath,
     describeCompleteBackupAccountWarning,
     describeCompleteBackupExportWarning,
     describeCompleteBackupFailure,
     describeCompleteBackupPreview,
+    describeCompleteBackupReplace,
+    describeCompleteBackupReplaceFailure,
     describeCompleteBackupResult,
     describeUnreadableCompleteBackup,
     resolveCompleteBackupTarget,
@@ -162,6 +165,21 @@ describe('complete-backup preview copy', () => {
         expect(text).not.toMatch(/kg|校准/);
     });
 
+    it('says when the merge will also apply display settings', () => {
+        const withPreferences = describeCompleteBackupPreview(
+            preview({ preferences: { values: { 'app-theme': 'dark' }, ignored: [], invalid: [] } }),
+            { t: translate('en'), lang: 'en', user: null },
+        );
+        expect(withPreferences).toContain("It also applies the backup's display settings.");
+
+        const without = describeCompleteBackupPreview(preview(), {
+            t: translate('en'),
+            lang: 'en',
+            user: null,
+        });
+        expect(without).not.toContain('display settings');
+    });
+
     it('reads right for one record and for nothing new', () => {
         const en = (stats: Partial<CompleteBackupPreview['stats']>) =>
             describeCompleteBackupPreview(
@@ -233,6 +251,27 @@ describe('complete-backup outcome copy', () => {
         );
         expect(describeCompleteBackupFailure(new Error(PARTIAL_WRITE_MESSAGE), t)).toBe(
             'The import did not finish, and part of it may already have been written.',
+        );
+    });
+
+    it('warns before replacing and distinguishes a partial replace', () => {
+        const t = translate('en');
+        const text = describeCompleteBackupReplace(
+            preview({
+                counts: { transfem: counts({ events: 2 }), transmasc: counts({ labResults: 1 }) },
+                preferences: { values: { 'app-theme': 'dark' }, ignored: [], invalid: [] },
+            }),
+            { t, lang: 'en', user: { username: 'synthetic-user' } },
+        );
+        expect(text).toContain('replaces every dose');
+        expect(text).toContain('merges into the account synthetic-user');
+        expect(text).toContain('display settings');
+        expect(text).toContain('recovery journal');
+        expect(describeCompleteBackupReplaceFailure(new Error('synthetic write failure'), t)).toBe(
+            'Restore failed. Nothing on this device was changed.',
+        );
+        expect(describeCompleteBackupReplaceFailure(new Error(REPLACE_PARTIAL_MESSAGE), t)).toBe(
+            'The restore did not finish, and part of it may already have been written. Reload the app so it can recover the journal.',
         );
     });
 });

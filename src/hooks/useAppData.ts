@@ -32,6 +32,7 @@ import {
     buildCompleteBackupBundleReportFromStorage,
     inspectCompleteBackupBundle,
     mergeCompleteBackupBundleToStorage,
+    replaceCompleteBackupBundleToStorage,
     type CompleteBackupActive,
 } from '../utils/backupBundle';
 import { useTranslation } from '../contexts/LanguageContext';
@@ -777,6 +778,32 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
     };
 
     /**
+     * Replace both modes' record stores and the shared scalars from a complete
+     * bundle. The storage helper owns the crash journal; this wrapper only
+     * installs the active mode's arrays and scalar state after it returns.
+     */
+    const replaceCompleteBackupBundle = (parsed: unknown) => {
+        const result = replaceCompleteBackupBundleToStorage(parsed, {
+            storage: localStorage,
+            owner,
+            mode,
+            active: completeBackupActive(),
+        });
+        const active = result.modes[mode];
+        if (active?.events !== undefined) setEvents(active.events);
+        if (active?.labResults !== undefined) setLabResults(active.labResults);
+        if (active?.doseTemplates !== undefined) setDoseTemplates(active.doseTemplates);
+        if (active?.quickDoses !== undefined) setQuickDoses(active.quickDoses);
+        if (active?.supplies !== undefined) setSupplies(active.supplies);
+        if (active?.plan !== undefined) setPlan(active.plan);
+        if (result.weight !== undefined) setWeightState(result.weight);
+        if (result.pkParams !== undefined) setPkParamsState(result.pkParams);
+        setCalibrationMethodState(result.calibration.method);
+        setCalibrationHistoryModeState(result.calibration.historyMode);
+        return result;
+    };
+
+    /**
      * Install the result of a cloud sync. Deliberately silent: this runs on its
      * own schedule, not because anyone pressed anything, and a dialog for it
      * would fire at arbitrary moments.
@@ -849,6 +876,7 @@ export const useAppData = (showDialog: ShowDialog, { withPrediction = false }: {
         buildCompleteBackupBundle,
         previewCompleteBackupBundle,
         applyCompleteBackupBundle,
+        replaceCompleteBackupBundle,
         applySyncedState,
         // (account, mode) currently selected vs. the one whose data is actually
         // in state. Cloud sync waits for the two to agree — see readyScope.

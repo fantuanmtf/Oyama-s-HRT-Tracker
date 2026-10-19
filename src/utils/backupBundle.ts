@@ -9,8 +9,13 @@
  * sync. It carries the local-only groups (quick doses, supplies, plan),
  * calibration state, and an allowlisted set of portable preferences. Import is
  * merge-only: category-level validation runs before any write, and a category
- * with an unresolved same-id conflict is blocked rather than guessed. Replace
- * remains BLOCKED because localStorage has no proven multi-key transaction.
+ * with an unresolved same-id conflict is blocked rather than guessed.
+ *
+ * A separate Replace action requires a complete bundle, refuses ambiguity, and
+ * applies through a crash-recoverable localStorage journal. That is an
+ * application-level transaction, not a browser primitive: it restores its
+ * snapshot after a crash or a failed write, but it is not a claim of storage
+ * atomicity beyond localStorage's own guarantees.
  */
 import {
     BODY_WEIGHT_KG_MAX,
@@ -57,6 +62,7 @@ import {
     type TombstoneMap,
     type Tombstones,
 } from './syncMerge';
+import { applyReplaceJournal, type ReplaceJournalEntry } from './replaceJournal';
 
 export const COMPLETE_BACKUP_FORMAT = 'oyama-hrt-complete-backup';
 export const COMPLETE_BACKUP_FORMAT_VERSION = 1;
@@ -2083,5 +2089,133 @@ export function mergeCompleteBackupBundleToStorage(
         throw err;
     }
 
+    return result;
+}
+
+export interface CompleteBackupReplaceResult {
+    applied: string[];
+    /** The exact arrays written to each mode, for the active-mode React state. */
+    modes: Partial<Record<ModeKey, CompleteBackupMode>>;
+    weight?: number;
+    pkParams?: PKCustomParams | null;
+    calibration: CompleteBackupCalibration;
+    preferences: PortablePreferences;
+}
+
+/**
+ * Replace the target owner's record store with a complete bundle through the
+ * crash-recoverable journal. Merge-specific conflicts are irrelevant here, but
+ * a bundle that cannot represent the whole store is refused: every category,
+ * both tombstone maps, and calibration must be present, no record may have
+ * been dropped by validation, and no category may contain duplicate ids.
+ *
+ * Scalars the bundle omits are left alone. A supplied weight or PK value
+ * replaces the local value and timestamp; a missing scalar does not mean
+ * "clear" in the complete-backup contract.
+ */
+export function replaceCompleteBackupBundleToStorage(
+    raw: unknown,
+    context: CompleteBackupContext,
+): CompleteBackupReplaceResult {
+    const now = context.now ?? Date.now();
+    const parsed = parseBundle(raw, now);
+    const errors = [...parsed.errors];
+
+    for (const [path, messages] of Object.entries(parsed.categoryErrors)) {
+        errors.push(`${path}: ${messages.join('; ')}`);
+    }
+    for (const [path, drops] of Object.entries(parsed.tombstoneDrops)) {
+        if (drops.future.length || drops.expired.length || drops.overCap.length) {
+            errors.push(`${path}: tombstones were dropped by the importer's bounds`);
+        }
+    }
+
+    for (const mode of MODE_KEYS) {
+        const block = parsed.modes[mode];
+        if (!block) {
+            errors.push(`modes.${mode} is required for replace`);
+            continue;
+        }
+        for (const category of ARRAY_CATEGORIES) {
+            const records = block[category];
+            if (records === undefined) {
+                errors.push(`${mode}.${category} is required for replace`);
+                continue;
+            }
+            const seen = new Set<string>();
+            for (const record of records) {
+                if (!isObject(record) || typeof record.id !== 'string') continue;
+                if (seen.has(record.id)) {
+                    errors.push(`${mode}.${category}: duplicate id ${record.id} is not replaceable`);
+                }
+                seen.add(record.id);
+            }
+        }
+        if (block.deletions === undefined) errors.push(`${mode}.deletions is required for replace`);
+    }
+    if (!parsed.calibration) errors.push('calibration is required for replace');
+
+    if (errors.length > 0) {
+        throw new Error(`Invalid complete backup for replace: ${errors.join('; ')}`);
+    }
+
+    const writes: ReplaceJournalEntry[] = [];
+    const result: CompleteBackupReplaceResult = {
+        applied: [],
+        modes: {},
+        calibration: parsed.calibration!,
+        preferences: parsed.preferences.values,
+    };
+
+    for (const mode of MODE_KEYS) {
+        const block = parsed.modes[mode]!;
+        const modeResult: CompleteBackupMode = {};
+        for (const category of ARRAY_CATEGORIES) {
+            const records = block[category] ?? [];
+            writes.push({
+                key: modeKeyFor(context.owner, mode, CATEGORY_SUFFIX[category]),
+                value: JSON.stringify(records),
+            });
+            (modeResult as Record<string, unknown>)[category] = records;
+            result.applied.push(`${mode}.${category}`);
+        }
+        const tombstones = block.deletions ?? emptyTombstones();
+        writes.push({
+            key: modeKeyFor(context.owner, mode, 'deletions'),
+            value: JSON.stringify(tombstones),
+        });
+        modeResult.deletions = tombstones;
+        result.applied.push(`${mode}.deletions`);
+        result.modes[mode] = modeResult;
+    }
+
+    if (parsed.weight !== undefined) {
+        writes.push({ key: nsFor(context.owner, 'weight'), value: String(parsed.weight) });
+        writes.push({
+            key: nsFor(context.owner, 'weight-at'),
+            value: parsed.weightUpdatedAt !== undefined ? String(parsed.weightUpdatedAt) : null,
+        });
+        result.weight = parsed.weight;
+        result.applied.push('weight');
+    }
+    if (parsed.pkParams !== undefined) {
+        writes.push({
+            key: nsFor(context.owner, 'pk-params'),
+            value: parsed.pkParams === null ? null : JSON.stringify(parsed.pkParams),
+        });
+        writes.push({
+            key: nsFor(context.owner, 'pk-params-at'),
+            value: parsed.pkParamsUpdatedAt !== undefined ? String(parsed.pkParamsUpdatedAt) : null,
+        });
+        result.pkParams = parsed.pkParams;
+        result.applied.push('pkParams');
+    }
+
+    const calibration = parsed.calibration!;
+    writes.push({ key: nsFor(context.owner, 'cal-method'), value: calibration.method });
+    writes.push({ key: nsFor(context.owner, 'cal-history-mode'), value: calibration.historyMode });
+    result.applied.push('calibration');
+
+    applyReplaceJournal(context.storage, context.owner, writes);
     return result;
 }

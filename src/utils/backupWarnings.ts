@@ -11,6 +11,7 @@
  */
 import type { Lang } from '../i18n/translations';
 import { LOCALE_MAP } from './helpers';
+import { REPLACE_PARTIAL_MESSAGE } from './replaceJournal';
 import {
     COMPLETE_BACKUP_FORMAT_VERSION,
     PARTIAL_WRITE_MESSAGE,
@@ -135,9 +136,49 @@ export function describeCompleteBackupPreview(
             .replace('{what}', describeRecordChanges(preview.stats, t)),
     ];
     if (preview.stats.removed > 0) sentences.push(countText('import.bundle_will_remove', preview.stats.removed, t));
+    if (Object.keys(preview.preferences.values).length > 0) sentences.push(t('import.bundle_preferences'));
     if (preview.blocked.length) sentences.push(describeBlockedParts(preview.blocked, t));
     sentences.push(...describeCompleteBackupAccountWarning(user, t).lines);
     return joinSentences(sentences);
+}
+
+/**
+ * The confirmation before a complete backup replaces the device. It says the
+ * count, names the target account, mentions display settings, and states that
+ * the journal is recovery equipment, not an undo button.
+ */
+export function describeCompleteBackupReplace(
+    preview: CompleteBackupPreview,
+    { t, lang, user }: { t: Translate; lang: Lang; user: BackupTargetUser | null | undefined },
+): string {
+    const total = Object.values(preview.counts).reduce(
+        (sum, counts) =>
+            sum +
+            counts.events +
+            counts.labResults +
+            counts.doseTemplates +
+            counts.deletions +
+            counts.quickDoses +
+            counts.supplies +
+            counts.plan,
+        0,
+    );
+    const lines = [
+        t('import.replace_complete_message')
+            .replace('{date}', preview.createdAt ? formatBackupDate(preview.createdAt, lang) : '')
+            .replace('{n}', String(total)),
+        ...describeCompleteBackupAccountWarning(user, t).lines,
+    ];
+    if (Object.keys(preview.preferences.values).length > 0) lines.push(t('import.bundle_preferences'));
+    lines.push(t('import.replace_complete_journal'));
+    return lines.join('\n');
+}
+
+/** After a failed replace: distinguish a clean rollback from a partial write. */
+export function describeCompleteBackupReplaceFailure(err: unknown, t: Translate): string {
+    const partial =
+        err instanceof Error && (err.message === PARTIAL_WRITE_MESSAGE || err.message === REPLACE_PARTIAL_MESSAGE);
+    return t(partial ? 'import.replace_complete_partial' : 'import.replace_complete_failed');
 }
 
 /**
