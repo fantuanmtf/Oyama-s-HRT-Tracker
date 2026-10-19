@@ -229,7 +229,7 @@ each check.
 | --- | --- | --- |
 | B-01 | Local migrations and Worker start | Local D1 migration succeeds; `wrangler dev --local` starts without touching remote bindings |
 | B-02 | `GET /api/transparency` | 200 JSON aggregate; documented fields; no PII, tokens, or per-user records |
-| B-03 | Response headers | `Content-Type: application/json`, `Cache-Control: no-store`, security headers present, CORS origin/method/header values match the Worker |
+| B-03 | Response headers | `Content-Type: application/json`, `Cache-Control: public, max-age=15` (aggregate + anonymized data; intentional public cache — decision 2026-10-19), security headers present, CORS origin/method/header values match the Worker |
 | B-04 | CORS preflight | `OPTIONS` succeeds with the allowed methods/headers; record the exact response |
 | B-05 | Authentication boundary | Missing, malformed, expired, and revoked tokens fail closed; session-level 401 includes `X-Session-Invalid: 1` where expected |
 | B-06 | Authorization boundary | A normal synthetic user cannot use admin routes or read another user's content/share; record status only, never data |
