@@ -8,22 +8,22 @@ security audit, or a claim that the format is stable.
 
 ## Pinned revisions
 
-| Track | Ref | SHA |
-| --- | --- | --- |
+| Track   | Ref                     | SHA                                        |
+| ------- | ----------------------- | ------------------------------------------ |
 | Website | `agent/add-gpg-website` | `e6b2e4f5b2cacf84dd9d86bee28d357d80311721` |
-| Tools | `Recovery/Tools` | `7ee628b6455dee31ca044e453dff31e6d17a7e56` |
+| Tools   | `Recovery/Tools`        | `7ee628b6455dee31ca044e453dff31e6d17a7e56` |
 
 The website code was **not modified** for this check. The only artifacts are
 this report and the demo assets referenced below.
 
 ## Environment
 
-| Tool | Version |
-| --- | --- |
-| Node.js | `v22.14.0` |
-| Wrangler | `4.149.0` |
-| Go | `go1.27.1-X:nodwarf5 linux/amd64` |
-| Browser | Chromium via Playwright |
+| Tool           | Version                                                         |
+| -------------- | --------------------------------------------------------------- |
+| Node.js        | `v22.14.0`                                                      |
+| Wrangler       | `4.149.0`                                                       |
+| Go             | `go1.27.1-X:nodwarf5 linux/amd64`                               |
+| Browser        | Chromium via Playwright                                         |
 | Local database | D1 migrations `0000_base_tables.sql` … `0008_login_backoff.sql` |
 
 A synthetic `JWT_SECRET` was generated with `openssl rand -hex 32` and was not
@@ -62,17 +62,17 @@ out) mode. The complete-backup export/import path does not require an account.
 All records were synthetic. No real health data, keys, passphrases, or tokens
 are in this report or in the repository.
 
-| Item | Count / value |
-| --- | ---: |
-| Events | 3 (2 sublingual E2, 1 injection EV) |
-| Lab results | 1 (`pg/ml`, `lcms`) |
-| Dose templates | 1 |
-| Quick doses | 1 |
-| Supplies | 1 (vial, 5 ml × 40 mg/ml, count 3) |
-| Plan items | 1 |
-| Weight | 70 kg |
-| Calibration | `mipd` / `retrospective` |
-| Deletions | empty |
+| Item           |                       Count / value |
+| -------------- | ----------------------------------: |
+| Events         | 3 (2 sublingual E2, 1 injection EV) |
+| Lab results    |                 1 (`pg/ml`, `lcms`) |
+| Dose templates |                                   1 |
+| Quick doses    |                                   1 |
+| Supplies       |  1 (vial, 5 ml × 40 mg/ml, count 3) |
+| Plan items     |                                   1 |
+| Weight         |                               70 kg |
+| Calibration    |            `mipd` / `retrospective` |
+| Deletions      |                               empty |
 
 ## Successful recovery loop
 
@@ -90,14 +90,14 @@ are in this report or in the repository.
 
 ### Artifacts
 
-| Artifact | Size | Notes |
-| --- | ---: | --- |
-| `website-export.json` | 2,772 bytes | Downloaded from the website |
-| `backup.hrtb` | 2,938 bytes | Tools output, mode `0600` |
-| `restored.json` | 2,772 bytes | Tools output, mode `0600` |
-| `website-export.json` vs `restored.json` | — | `cmp` exit 0, byte-identical |
-| private key | 1,024 bytes | mode `0600` |
-| public key | 799 bytes | mode `0644` |
+| Artifact                                 |        Size | Notes                        |
+| ---------------------------------------- | ----------: | ---------------------------- |
+| `website-export.json`                    | 2,772 bytes | Downloaded from the website  |
+| `backup.hrtb`                            | 2,938 bytes | Tools output, mode `0600`    |
+| `restored.json`                          | 2,772 bytes | Tools output, mode `0600`    |
+| `website-export.json` vs `restored.json` |           — | `cmp` exit 0, byte-identical |
+| private key                              | 1,024 bytes | mode `0600`                  |
+| public key                               |   799 bytes | mode `0644`                  |
 
 ### Commands and observed output
 
@@ -156,16 +156,16 @@ calibration: mipd/retrospective -> mipd/retrospective (unchanged)
 The merge result was `新增 8，更新 0，删除 0` (8 added, 0 updated, 0 removed).
 Storage after the import contained:
 
-| Key | Value |
-| --- | --- |
-| `hrt-events` | `e2e-e1`, `e2e-e2`, `e2e-e3` |
-| `hrt-lab-results` | `e2e-l1` |
-| `hrt-dose-templates` | `e2e-t1` |
-| `hrt-quick-doses` | `e2e-q1` |
-| `hrt-supplies` | `e2e-s1` |
-| `hrt-plan` | `e2e-p1` |
-| `hrt-weight` | `70` |
-| `auth_token` | absent (credential keys are never exported) |
+| Key                  | Value                                       |
+| -------------------- | ------------------------------------------- |
+| `hrt-events`         | `e2e-e1`, `e2e-e2`, `e2e-e3`                |
+| `hrt-lab-results`    | `e2e-l1`                                    |
+| `hrt-dose-templates` | `e2e-t1`                                    |
+| `hrt-quick-doses`    | `e2e-q1`                                    |
+| `hrt-supplies`       | `e2e-s1`                                    |
+| `hrt-plan`           | `e2e-p1`                                    |
+| `hrt-weight`         | `70`                                        |
+| `auth_token`         | absent (credential keys are never exported) |
 
 The calibration values matched the app defaults and the merge correctly treated
 them as unchanged, so the `hrt-cal-method` / `hrt-cal-history-mode` keys were
@@ -178,15 +178,15 @@ calibration confirmation before it is written.
 These were exercised with synthetic inputs. Each command exits 1 and leaves no
 requested output file:
 
-| Case | Result |
-| --- | --- |
-| Wrong private key | `openpgp: incorrect key` |
-| Wrong passphrase | key unlock failure |
-| Tampered ciphertext | integrity/MDC failure |
-| Truncated container | `truncated HRTB container` |
-| Existing output | `output already exists`; sentinel unchanged |
-| Packet after encrypted data (trailing plaintext) | `packet after the encrypted data packet` |
-| Bytes after the container | `trailing bytes after HRTB payload` |
+| Case                                             | Result                                      |
+| ------------------------------------------------ | ------------------------------------------- |
+| Wrong private key                                | `openpgp: incorrect key`                    |
+| Wrong passphrase                                 | key unlock failure                          |
+| Tampered ciphertext                              | integrity/MDC failure                       |
+| Truncated container                              | `truncated HRTB container`                  |
+| Existing output                                  | `output already exists`; sentinel unchanged |
+| Packet after encrypted data (trailing plaintext) | `packet after the encrypted data packet`    |
+| Bytes after the container                        | `trailing bytes after HRTB payload`         |
 
 The trailing-packet case is the regression fixed in `7ee628b` (`f73f0c9`).
 `inspect` rejects the same container.
