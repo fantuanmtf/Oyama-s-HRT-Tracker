@@ -32,8 +32,8 @@ import {
 } from '../../logic';
 import type { AppTheme } from '../constants';
 import type { Lang } from '../i18n/translations';
-import { type PlanItem } from './plan';
-import { type Pack, type Supply } from './regimen';
+import { legacyCpaItem, normalizePlanItem, type PlanItem } from './plan';
+import { normalizeSupply, type Pack, type Supply } from './regimen';
 import {
     MAX_IMPORT_ENTRIES,
     loadJSONFromStorage,
@@ -928,6 +928,27 @@ const readBoundedStampString = (
 };
 
 /**
+ * A mode the app is not showing, read the way the app would load it: supplies
+ * saved before packs existed are upgraded, and cyproterone's old standalone
+ * choice counts as the feminizing plan. Read raw, those would be left out of
+ * the backup although the app shows them once the person switches modes.
+ */
+const readInactiveCategory = (storage: StorageLike, owner: string, mode: ModeKey, category: ArrayCategory): unknown => {
+    const key = modeKeyFor(owner, mode, CATEGORY_SUFFIX[category]);
+    if (category === 'plan' && mode === 'transfem' && storage.getItem(key) === null) {
+        const cpa = legacyCpaItem(storage.getItem(nsFor(owner, 'cpa-plan')));
+        if (cpa) return [cpa];
+    }
+    const raw = loadJSONFromStorage<unknown>(storage, key, []);
+    if (!Array.isArray(raw)) return raw;
+    // Anything the loader can't read is kept as it is, so the export report
+    // still counts it as left out.
+    if (category === 'supplies') return raw.map(item => normalizeSupply(item) ?? item);
+    if (category === 'plan') return raw.map(item => normalizePlanItem(item) ?? item);
+    return raw;
+};
+
+/**
  * Build a complete bundle from the current store, overlaying the active mode's
  * in-memory arrays (which can be newer than the persisted copy). The report
  * lists every record or stamp that could not be exported.
@@ -966,9 +987,7 @@ export function buildCompleteBackupBundleReportFromStorage(
         for (const category of ARRAY_CATEGORIES) {
             const path = `${mode}.${category}`;
             const raw =
-                mode === activeMode
-                    ? activeArrays[category]
-                    : loadJSONFromStorage<unknown>(storage, modeKeyFor(owner, mode, CATEGORY_SUFFIX[category]), []);
+                mode === activeMode ? activeArrays[category] : readInactiveCategory(storage, owner, mode, category);
             const cleaned = cleanExportRecords(raw, path, VALIDATORS[category], now);
             block[category] = cleaned.values;
             issues.push(...cleaned.issues);

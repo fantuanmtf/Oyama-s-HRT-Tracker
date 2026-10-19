@@ -1062,6 +1062,35 @@ describe('complete backup bundle data layer', () => {
         expect(preview.blocked).toEqual([]);
     });
 
+    it('exports the mode not on screen the way the app would load it', () => {
+        const storage = seed();
+        // Saved before supplies had packs, and before cyproterone joined the plan.
+        storage.setItem(
+            key('transfem', 'supplies'),
+            JSON.stringify([{ id: 'old-supply', route: Route.oral, ester: Ester.E2, amount: 60, startedAt: 1_000 }]),
+        );
+        storage.removeItem(key('transfem', 'plan'));
+        storage.setItem('hrt-cpa-plan', JSON.stringify({ plan: 'alternate' }));
+
+        const report = buildReport(storage, 'transmasc');
+        expect(report.invalidRecords).toBe(0);
+        expect(report.bundle.modes.transfem.supplies).toEqual([
+            {
+                id: 'old-supply',
+                route: Route.oral,
+                ester: Ester.E2,
+                pack: { kind: 'bulk' },
+                count: 60,
+                startedAt: 1_000,
+            },
+        ]);
+        expect(report.bundle.modes.transfem.plan?.map(item => [item.id, item.ester, item.everyDays])).toEqual([
+            ['cpa', Ester.CPA, 2],
+        ]);
+        const preview = inspectCompleteBackupBundle(report.bundle, context(new MemoryStorage()));
+        expect(preview.blocked).toEqual([]);
+    });
+
     it('uses one cross-version ester rule for events, templates, quick doses, supplies and plan', () => {
         const storage = seed();
         const futureEster = 'FUTURE1';
