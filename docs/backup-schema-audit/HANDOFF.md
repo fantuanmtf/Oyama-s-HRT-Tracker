@@ -584,6 +584,10 @@ browser-level regression test for P2-1.
   No Tools branch, worktree, or file was changed.
 - **Code + tests commit:** `0d813d4` —
   `fix: persist pruned tombstones and harden backup ids`.
+- **Follow-up coverage commit:** `4e1a32f` —
+  `test: cover inherited tombstone names for both ids`. It proves both
+  `toString` and `valueOf` survive an empty tombstone map in a sync merge,
+  while an explicit `valueOf` tombstone still deletes that record.
 - **Files:** `logic.ts`, `src/utils/backupBundle.ts`, `src/utils/plan.ts`,
   `src/utils/syncMerge.ts`, `tests/backupBundle.test.ts`,
   `tests/backupState.test.ts`, `docs/backup-schema-audit/*`.
