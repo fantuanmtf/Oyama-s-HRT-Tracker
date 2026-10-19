@@ -243,7 +243,7 @@ func cmdInspect(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
-	recipients, err := inspectRecipients(container.Payload)
+	recipients, err := validateOuterPacketSequence(container.Payload)
 	if err != nil {
 		return err
 	}

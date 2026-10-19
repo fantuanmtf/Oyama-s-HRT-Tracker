@@ -19,6 +19,8 @@ var (
 	errPayloadNotEncrypted = errors.New("container payload is not an encrypted OpenPGP message")
 	errNoEncryptedPayload  = errors.New("container payload has no encrypted data packet")
 	errNoRecipient         = errors.New("container payload has no public-key recipient")
+	errTrailingPacket      = errors.New("container payload has a packet after the encrypted data packet")
+	errMultipleEncrypted   = errors.New("container payload has more than one encrypted data packet")
 )
 
 type recipientInfo struct {
@@ -92,6 +94,14 @@ func encryptBundle(recipientArmor string, plaintext []byte) ([]byte, string, err
 }
 
 func decryptContainer(privateArmor string, passphrase, payload []byte) ([]byte, string, error) {
+	// Validate the unencrypted outer packet sequence before unlocking the key
+	// or parsing the message. go-crypto's packet reader can fall back to the
+	// outer stream when the encrypted payload is empty, so trailing plaintext
+	// packets must be rejected here rather than trusted after ReadMessage.
+	if _, err := validateOuterPacketSequence(payload); err != nil {
+		return nil, "", err
+	}
+
 	privateKey, err := crypto.NewPrivateKeyFromArmored(strings.TrimSpace(privateArmor), passphrase)
 	if err != nil {
 		return nil, "", fmt.Errorf("unlock private key (wrong passphrase or unsupported key): %w", err)
@@ -158,22 +168,53 @@ func decryptContainer(privateArmor string, passphrase, payload []byte) ([]byte, 
 	return plaintext, privateKey.GetFingerprint(), nil
 }
 
-// inspectRecipients reads the unauthenticated public-key-encrypted session-key
-// packets (PKESK) at the start of the payload. It never decrypts the session
-// key or the message, and a PKESK KeyID must not be treated as proof that the
-// container is encrypted to a particular key.
-func inspectRecipients(payload []byte) ([]recipientInfo, error) {
+// validateOuterPacketSequence parses the unencrypted outer packet layer of an
+// OpenPGP message without decrypting it. The accepted sequence is:
+//
+//	Marker* PKESK+ (SymmetricallyEncrypted[IntegrityProtected] | AEADEncrypted) EOF
+//
+// Marker packets are ignored. At least one public-key encrypted session-key
+// packet (PKESK) and exactly one encrypted data packet are required, and the
+// payload must end immediately after the encrypted data packet. Rejecting
+// trailing packets prevents go-crypto from treating an unencrypted packet after
+// an empty encrypted packet as the message body.
+//
+// The returned recipient identifiers are unauthenticated PKESK advertisements;
+// they must not be treated as proof that the container is encrypted to a
+// particular key.
+func validateOuterPacketSequence(payload []byte) ([]recipientInfo, error) {
 	reader := bytes.NewReader(payload)
 	var recipients []recipientInfo
+	encryptedSeen := false
+
 	for {
 		parsed, err := packet.Read(reader)
 		if errors.Is(err, io.EOF) {
-			break
+			if !encryptedSeen {
+				return nil, errNoEncryptedPayload
+			}
+			return recipients, nil
 		}
 		if err != nil {
+			if encryptedSeen {
+				return nil, fmt.Errorf("%w: %v", errTrailingPacket, err)
+			}
 			return nil, fmt.Errorf("parse OpenPGP packet: %w", err)
 		}
+		if encryptedSeen {
+			switch parsed.(type) {
+			case *packet.SymmetricallyEncrypted, *packet.AEADEncrypted:
+				return nil, errMultipleEncrypted
+			default:
+				return nil, fmt.Errorf("%w: unexpected %T packet", errTrailingPacket, parsed)
+			}
+		}
+
 		switch p := parsed.(type) {
+		case *packet.Marker:
+			// packet.Read has already validated the "PGP" marker contents.
+			// Marker packets are legal in the outer sequence and carry no
+			// message data.
 		case *packet.EncryptedKey:
 			info := recipientInfo{AdvertisedKeyID: p.KeyId}
 			if len(p.KeyFingerprint) > 0 {
@@ -187,12 +228,20 @@ func inspectRecipients(payload []byte) ([]recipientInfo, error) {
 			if len(recipients) == 0 {
 				return nil, errNoRecipient
 			}
-			return recipients, nil
+			// Consume the encrypted packet body so the next read observes
+			// either EOF or an actual packet outside the encrypted data.
+			if _, err := io.Copy(io.Discard, p.Contents); err != nil {
+				return nil, fmt.Errorf("read encrypted data packet: %w", err)
+			}
+			encryptedSeen = true
 		case *packet.AEADEncrypted:
 			if len(recipients) == 0 {
 				return nil, errNoRecipient
 			}
-			return recipients, nil
+			if _, err := io.Copy(io.Discard, p.Contents); err != nil {
+				return nil, fmt.Errorf("read encrypted data packet: %w", err)
+			}
+			encryptedSeen = true
 		case *packet.SymmetricKeyEncrypted:
 			return nil, errors.New("container payload is passphrase-encrypted, not public-key encrypted")
 		default:
@@ -203,7 +252,6 @@ func inspectRecipients(payload []byte) ([]recipientInfo, error) {
 			)
 		}
 	}
-	return nil, errNoEncryptedPayload
 }
 
 // matchAdvertisedRecipient maps unauthenticated PKESK key IDs or fingerprints
