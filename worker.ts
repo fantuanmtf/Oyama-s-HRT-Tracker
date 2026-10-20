@@ -2792,6 +2792,7 @@ export default {
                             env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(userId),
                             env.DB.prepare('DELETE FROM passkeys WHERE user_id = ?').bind(userId),
                             env.DB.prepare('DELETE FROM backup_codes WHERE user_id = ?').bind(userId),
+                            env.DB.prepare('DELETE FROM f2f_cli_codes WHERE user_id = ?').bind(userId),
                             /* F2F seats are tombstones: never delete the row. */
                             env.DB.prepare(
                                 "UPDATE f2f_keys SET status = 'revoked', public_key = '', revoked_at = ?, updated_at = ? WHERE user_id = ?",
@@ -3389,6 +3390,7 @@ export default {
                             env.DB.prepare('DELETE FROM sessions WHERE user_id = ?').bind(targetId),
                             env.DB.prepare('DELETE FROM passkeys WHERE user_id = ?').bind(targetId),
                             env.DB.prepare('DELETE FROM backup_codes WHERE user_id = ?').bind(targetId),
+                            env.DB.prepare('DELETE FROM f2f_cli_codes WHERE user_id = ?').bind(targetId),
                             /* F2F seats are tombstones: never delete the row. */
                             env.DB.prepare(
                                 "UPDATE f2f_keys SET status = 'revoked', public_key = '', revoked_at = ?, updated_at = ? WHERE user_id = ?",
