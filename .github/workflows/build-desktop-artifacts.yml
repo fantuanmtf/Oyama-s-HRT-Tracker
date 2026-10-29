@@ -1,0 +1,88 @@
+name: Build desktop artifacts
+
+on:
+  push:
+    branches:
+      - build/desktop-artifacts-1.5.2
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-appimage
+            os: ubuntu-22.04
+            bundles: appimage
+            args: ""
+            rust_targets: ""
+            artifacts: |
+              src-tauri/target/release/bundle/appimage/*.AppImage
+          - name: windows-msi-exe
+            os: windows-latest
+            bundles: msi
+            args: ""
+            rust_targets: ""
+            artifacts: |
+              src-tauri/target/release/bundle/msi/*.msi
+              src-tauri/target/release/hrt-tracker.exe
+          - name: macos-dmg
+            os: macos-latest
+            bundles: dmg
+            args: --target universal-apple-darwin
+            rust_targets: aarch64-apple-darwin x86_64-apple-darwin
+            artifacts: |
+              src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+    env:
+      VITE_API_ORIGIN: ${{ vars.VITE_API_ORIGIN || 'https://hrt.mahiro.uk' }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.0-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev \
+            libsoup2.4-dev
+
+      - name: Install Rust
+        run: rustup toolchain install stable --profile minimal --no-self-update
+
+      - name: Add Rust targets
+        if: matrix.rust_targets != ''
+        run: rustup target add ${{ matrix.rust_targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Build bundles
+        run: npm run tauri:build -- --ci --bundles ${{ matrix.bundles }} ${{ matrix.args }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
