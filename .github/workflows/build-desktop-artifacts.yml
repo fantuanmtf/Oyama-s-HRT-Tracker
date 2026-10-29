@@ -32,7 +32,7 @@ jobs:
             rust_targets: ""
             artifacts: |
               src-tauri/target/release/bundle/msi/*.msi
-              src-tauri/target/release/hrt-tracker.exe
+              src-tauri/target/release/*.exe
           - name: macos-dmg
             os: macos-14
             bundles: dmg
