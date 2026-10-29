@@ -34,7 +34,7 @@ jobs:
               src-tauri/target/release/bundle/msi/*.msi
               src-tauri/target/release/hrt-tracker.exe
           - name: macos-dmg
-            os: macos-latest
+            os: macos-14
             bundles: dmg
             args: --target universal-apple-darwin
             rust_targets: aarch64-apple-darwin x86_64-apple-darwin
