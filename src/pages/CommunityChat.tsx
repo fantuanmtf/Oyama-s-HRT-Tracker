@@ -148,8 +148,8 @@ const CommunityChat = ({ onBack }: { onBack: () => void }) => {
                     style={isAdmin ? { borderColor: 'var(--accent)' } : undefined}
                 >
                     <p className="text-sm text-muted">
-                        {t('chat.posting_as')}: {identity}
-                        {isAdmin && <span className="ml-2 text-xs font-semibold text-[var(--accent)]">ADMIN · UNRESTRICTED</span>}
+                        {t('chat.posting_as')}: {identity}{' '}
+                        {isAdmin && <span className="text-xs font-semibold text-[var(--accent)]">ADMIN · UNRESTRICTED</span>}
                     </p>
                     <input
                         value={title}
@@ -202,36 +202,53 @@ const CommunityChat = ({ onBack }: { onBack: () => void }) => {
                                 <span>{th.nickname_snapshot}</span>
                                 <span>{new Date(th.created_at * 1000).toLocaleString()}</span>
                             </div>
-                            <h3 className="font-semibold" style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{th.title}</h3>
-                            {th.review_status === 'pending' && <span className="text-xs text-amber-500">{t('chat.pending_review')}</span>}
                             {isOpen ? (
-                                <div
-                                    className="prose prose-sm max-w-none whitespace-pre-wrap"
-                                    style={{ overflowWrap: 'anywhere', wordBreak: 'break-word', maxWidth: '100%' }}
-                                >
-                                    <ReactMarkdown rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>
-                                        {th.body}
-                                    </ReactMarkdown>
-                                </div>
+                                <>
+                                    <h3
+                                        className="font-semibold"
+                                        style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                    >
+                                        {th.title}
+                                    </h3>
+                                    {th.review_status === 'pending' && (
+                                        <span className="text-xs text-amber-500">{t('chat.pending_review')}</span>
+                                    )}
+                                    <div
+                                        className="prose prose-sm max-w-none"
+                                        style={{ overflowWrap: 'anywhere', wordBreak: 'break-word', maxWidth: '100%' }}
+                                    >
+                                        <ReactMarkdown rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>
+                                            {th.body}
+                                        </ReactMarkdown>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            setExpanded(prev => {
+                                                const n = new Set(prev);
+                                                n.delete(th.id);
+                                                return n;
+                                            })
+                                        }
+                                        className="text-xs text-muted mt-1"
+                                    >
+                                        {t('chat.collapse')}
+                                    </button>
+                                </>
                             ) : (
-                                <button
-                                    type="button"
-                                    onClick={() => setExpanded(prev => new Set(prev).add(th.id))}
-                                    className="text-left text-sm text-muted line-clamp-2 w-full"
-                                    style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
-                                >
-                                    {th.body.slice(0, 120)}
-                                    {th.body.length > 120 ? '…' : ''}
-                                </button>
-                            )}
-                            {isOpen && (
-                                <button
-                                    type="button"
-                                    onClick={() => setExpanded(prev => { const n = new Set(prev); n.delete(th.id); return n; })}
-                                    className="text-xs text-muted mt-1"
-                                >
-                                    {t('chat.collapse')}
-                                </button>
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={() => setExpanded(prev => new Set(prev).add(th.id))}
+                                        className="text-left font-semibold w-full"
+                                        style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                    >
+                                        {th.title}
+                                    </button>
+                                    {th.review_status === 'pending' && (
+                                        <span className="text-xs text-amber-500">{t('chat.pending_review')}</span>
+                                    )}
+                                </>
                             )}
                         </li>
                     );
