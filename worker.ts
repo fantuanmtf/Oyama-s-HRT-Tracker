@@ -29,6 +29,41 @@ import {
     shareOriginFor,
 } from './src/server/shareConstants';
 import { ensureCommunityVoteSchema, handleCommunityVoteMe, handleCommunityVoteSubmit } from './communityVoteServer';
+import {
+    ensureCommunityChatSchema,
+    handleChatFlagGet,
+    handleChatFlagSet,
+    handleIdentityGet,
+    handleIdentitySet,
+    handleEligibility,
+    handleApplicationSubmit,
+    handleApplicationList,
+    handleApplicationReview,
+    handleThreadCreate,
+    handleThreadList,
+    handleThreadGet,
+    handleThreadClose,
+    handlePostCreate,
+    handlePostList,
+    handlePostEdit,
+    handleLike,
+    handleReviewList,
+    handleReviewDecision,
+    handleRestrict,
+    handleTrust,
+    handleAdminsList,
+    handleAdminPromote,
+    handleAdminDemote,
+    handleReport,
+    handleReportsList,
+    handleReportResolve,
+    handleBroadcast,
+    handleNotificationsList,
+    handleNotificationsRead,
+    cleanupExpired,
+    refreshTorExits,
+    isTorIp,
+} from './communityChatServer';
 import { logDeletion } from './src/server/userHelpers';
 import { handlePublicRoutes } from './src/server/routes/public';
 import { handleSessionsRoute } from './src/server/routes/sessions';
@@ -627,6 +662,39 @@ export default {
                     );
                 }
 
+                // --- community chat (same session auth) ---
+                if (url.pathname === '/api/chat/flag' && request.method === 'GET') { const r = await handleChatFlagGet(env); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/chat/threads' && request.method === 'GET') { const r = await handleThreadList(env, request, userId); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/chat/threads' && request.method === 'POST') { const tor = await isTorIp(env, getClientIP(request, env)); const r = await handleThreadCreate(env, userId, request, tor); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname.match(/^\/api\/chat\/threads\/[^/]+$/) && request.method === 'GET') { const id = url.pathname.split('/')[4]; const r = await handleThreadGet(env, id, userId); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname.match(/^\/api\/chat\/threads\/[^/]+\/close$/) && request.method === 'POST') { const id = url.pathname.split('/')[4]; const r = await handleThreadClose(env, userId, id); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname.match(/^\/api\/chat\/threads\/[^/]+\/posts$/) && request.method === 'GET') { const id = url.pathname.split('/')[4]; const r = await handlePostList(env, id, userId); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname.match(/^\/api\/chat\/threads\/[^/]+\/posts$/) && request.method === 'POST') { const id = url.pathname.split('/')[4]; const tor = await isTorIp(env, getClientIP(request, env)); const r = await handlePostCreate(env, userId, id, request, tor); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname.match(/^\/api\/chat\/posts\/[^/]+$/) && request.method === 'PATCH') { const id = url.pathname.split('/')[4]; const r = await handlePostEdit(env, userId, id, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname.match(/^\/api\/chat\/threads\/[^/]+\/like$/) && request.method === 'POST') { const id = url.pathname.split('/')[4]; const r = await handleLike(env, userId, id); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/chat/notifications' && request.method === 'GET') { const r = await handleNotificationsList(env, userId); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/chat/notifications/read' && request.method === 'POST') { const r = await handleNotificationsRead(env, userId, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/chat/identity' && request.method === 'GET') { const r = await handleIdentityGet(env, userId); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/chat/identity' && request.method === 'PUT') { const r = await handleIdentitySet(env, userId, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/chat/eligibility' && request.method === 'GET') { const hrtDays = Number(url.searchParams.get('hrtDays') ?? '0'); const r = await handleEligibility(env, userId, Number.isFinite(hrtDays) ? hrtDays : 0); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/chat/applications' && request.method === 'POST') { const r = await handleApplicationSubmit(env, userId); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/chat/reports' && request.method === 'POST') { const r = await handleReport(env, userId, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                // admin chat routes
+                if (url.pathname === '/api/admin/chat/flag' && request.method === 'PUT') { const r = await handleChatFlagSet(env, userId, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/admin/chat/review' && request.method === 'GET') { const r = await handleReviewList(env, userId); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname.match(/^\/api\/admin\/chat\/review\/[^/]+$/) && request.method === 'POST') { const target = url.pathname.split('/').pop()!; const t = url.searchParams.get('type') === 'thread' ? 'thread' : 'post'; const r = await handleReviewDecision(env, userId, t, target, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/admin/chat/restrict' && request.method === 'POST') { const r = await handleRestrict(env, userId, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/admin/chat/trust' && request.method === 'POST') { const r = await handleTrust(env, userId, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/admin/chat/admins' && request.method === 'GET') { const r = await handleAdminsList(env, userId); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/admin/chat/admins' && request.method === 'POST') { const r = await handleAdminPromote(env, userId, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname.match(/^\/api\/admin\/chat\/admins\/[^/]+$/) && request.method === 'DELETE') { const target = url.pathname.split('/').pop()!; const r = await handleAdminDemote(env, userId, target); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/admin/chat/broadcast' && request.method === 'POST') { const r = await handleBroadcast(env, userId, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/admin/chat/reports' && request.method === 'GET') { const r = await handleReportsList(env, userId); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname.match(/^\/api\/admin\/chat\/reports\/[^/]+$/) && request.method === 'POST') { const id = url.pathname.split('/').pop()!; const r = await handleReportResolve(env, userId, id, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/admin/chat/applications' && request.method === 'GET') { const r = await handleApplicationList(env, userId); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname.match(/^\/api\/admin\/chat\/applications\/[^/]+$/) && request.method === 'POST') { const id = url.pathname.split('/').pop()!; const r = await handleApplicationReview(env, userId, id, request); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+                if (url.pathname === '/api/admin/chat/flag' && request.method === 'GET') { const r = await handleChatFlagGet(env); return withSecurityHeaders(new Response(JSON.stringify(r.body), { status: r.status, headers: { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } })); }
+
                 // --- hrt pairing web UI (same session auth) ---
                 if (url.pathname.startsWith('/api/hrt/')) {
                     const userRow = (await env.DB.prepare('SELECT id, username FROM users WHERE id = ?')
@@ -926,6 +994,20 @@ export default {
                     await sweepF2fCohorts(env);
                 } catch (e) {
                     console.error('Failed to sweep F2F cohorts:', e);
+                }
+                try {
+                    await cleanupExpired(env, now);
+                } catch (e) {
+                    console.error('Failed to sweep chat:', e);
+                }
+                // refresh tor exits every 12h (best effort; runs each cron tick)
+                try {
+                    const last = await env.DB.prepare('SELECT MAX(fetched_at) AS t FROM tor_exit_ips').first<{ t: number | null }>();
+                    if (!last?.t || now - last.t > 12 * 3600) {
+                        await refreshTorExits(env, now);
+                    }
+                } catch (e) {
+                    console.error('Failed to refresh tor exits:', e);
                 }
             })(),
         );

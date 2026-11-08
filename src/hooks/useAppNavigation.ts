@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { House, Log, Labs, Gear, Account, Shield } from '../components/icons';
+import { House, Log, Labs, Gear, Account, Shield, Share } from '../components/icons';
 import { runViewMove, type ViewMove } from '../motion/viewMove';
 import { useTranslation } from '../contexts/LanguageContext';
 import {
@@ -41,6 +41,7 @@ export type ViewKey =
     | 'settings-transparency'
     | 'settings-credits'
     | 'settings-community'
+    | 'community-chat'
     | 'settings-disclaimer'
     | 'settings-opsec'
     | 'settings-pk-viz'
@@ -141,6 +142,7 @@ const VIEW_ORDER: ViewKey[] = [
     'settings-pk-viz',
     'settings-credits',
     'settings-community',
+    'community-chat',
     'settings-disclaimer',
     'settings-milk-tea',
     'settings-cat-states',
@@ -353,6 +355,7 @@ export const useAppNavigation = (user: any) => {
         { id: 'home', label: t('nav.home'), icon: House },
         { id: 'history', label: t('nav.history'), icon: Log },
         { id: 'lab', label: t('nav.lab'), icon: Labs },
+        { id: 'community-chat', label: t('nav.community_chat'), icon: Share },
         { id: 'settings', label: t('nav.settings'), icon: Gear },
         { id: 'account', label: t('nav.account'), icon: Account },
     ];

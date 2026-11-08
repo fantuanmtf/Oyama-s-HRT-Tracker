@@ -69,6 +69,7 @@ import ImportSettings from './pages/ImportSettings';
 import TransparencySettings from './pages/TransparencySettings';
 import Credits from './pages/Credits';
 import CommunityVote from './pages/CommunityVote';
+import CommunityChat from './pages/CommunityChat';
 import Disclaimer from './pages/Disclaimer';
 import OpSec from './pages/OpSec';
 import PKDemos from './pages/PKDemos';
@@ -1030,6 +1031,10 @@ const AppContent = () => {
                             openEditId={editFromOverview}
                             onOpenEditHandled={() => setEditFromOverview(null)}
                         />
+                    )}
+
+                    {currentView === 'community-chat' && (
+                        <CommunityChat onBack={() => handleViewChange('home')} />
                     )}
 
                     {currentView === 'lab' && (
