@@ -5,7 +5,7 @@
  */
 
 export const CHAT_MAX_POST_CHARS = 1000;
-export const CHAT_ADMIN_MAX_POST_CHARS = 100000;
+export const CHAT_ADMIN_MAX_POST_CHARS = 1_000_000;
 export const CHAT_TITLE_MAX_CHARS = 120;
 export const CHAT_NICKNAME_MIN = 2;
 export const CHAT_NICKNAME_MAX = 24;

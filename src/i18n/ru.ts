@@ -1225,6 +1225,9 @@ export const RU = {
     'chat.kind_qa': 'Q&A',
     'chat.pending_review': 'Pending review',
     'chat.collapse': 'Collapse',
+    'chat.admin_body_placeholder': 'Admin message (Markdown, no length limit, filters bypassed)',
+    'chat.admin_unrestricted_hint':
+        'Admin post: length limit and content filters (darknet addresses, encoded strings, images) are bypassed.',
     'vote.title': 'Голосование о пожертвованиях',
     'vote.status.upcoming': 'Ещё не открыто',
     'vote.status.open': 'Голосование идёт',

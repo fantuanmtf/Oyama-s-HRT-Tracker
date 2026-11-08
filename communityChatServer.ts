@@ -372,7 +372,7 @@ export async function handleThreadCreate(env: ChatEnv, userId: string, request: 
     if (!title) return error(400, 'INVALID_TITLE', 'Invalid title');
     const v = validatePostBody(body?.body, isAdmin);
     if (!v.ok) return error(400, (v as { code: string }).code, (v as { code: string }).code);
-    const cleanBody = stripImages(v.body);
+    const cleanBody = isAdmin ? v.body : stripImages(v.body);
     const f = filterContent(`${title}\n${cleanBody}`, isAdmin);
     if (!f.allow) return error(400, `FILTER_${f.reason?.toUpperCase()}`, 'Content not allowed');
     const reviewStatus: ChatReviewStatus = isAdmin
@@ -482,7 +482,7 @@ export async function handlePostCreate(env: ChatEnv, userId: string, threadId: s
     const body = parsed.value as any;
     const v = validatePostBody(body?.body, isAdmin);
     if (!v.ok) return error(400, (v as { code: string }).code, (v as { code: string }).code);
-    const cleanBody = stripImages(v.body);
+    const cleanBody = isAdmin ? v.body : stripImages(v.body);
     const f = filterContent(cleanBody, isAdmin);
     if (!f.allow) return error(400, `FILTER_${f.reason?.toUpperCase()}`, 'Content not allowed');
     const trusted = !isAdmin && (await isTrusted(env, userId));
@@ -539,7 +539,7 @@ export async function handlePostEdit(env: ChatEnv, userId: string, postId: strin
     const body = parsed.value as any;
     const v = validatePostBody(body?.body, isAdmin);
     if (!v.ok) return error(400, (v as { code: string }).code, (v as { code: string }).code);
-    const cleanBody = stripImages(v.body);
+    const cleanBody = isAdmin ? v.body : stripImages(v.body);
     const f = filterContent(cleanBody, isAdmin);
     if (!f.allow) return error(400, `FILTER_${f.reason?.toUpperCase()}`, 'Content not allowed');
     await env.DB.prepare(`UPDATE chat_posts SET body = ?, updated_at = ?, edited_count = edited_count + 1, last_edited_at = ? WHERE id = ?`)

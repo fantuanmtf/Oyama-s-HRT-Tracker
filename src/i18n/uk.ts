@@ -1219,6 +1219,9 @@ export const UK = {
     'chat.kind_qa': 'Q&A',
     'chat.pending_review': 'Pending review',
     'chat.collapse': 'Collapse',
+    'chat.admin_body_placeholder': 'Admin message (Markdown, no length limit, filters bypassed)',
+    'chat.admin_unrestricted_hint':
+        'Admin post: length limit and content filters (darknet addresses, encoded strings, images) are bypassed.',
     'vote.title': 'Голосування щодо пожертв',
     'vote.status.upcoming': 'Ще не відкрито',
     'vote.status.open': 'Голосування триває',

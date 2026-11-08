@@ -31,6 +31,7 @@ const CommunityChat = ({ onBack }: { onBack: () => void }) => {
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
+    const isAdmin = !!user?.isAdmin;
 
     const loadFlag = async () => {
         try {
@@ -142,22 +143,28 @@ const CommunityChat = ({ onBack }: { onBack: () => void }) => {
             )}
 
             {token && identity && (
-                <div className="my-4 space-y-2 border rounded p-3">
+                <div
+                    className="my-4 space-y-2 border rounded p-3"
+                    style={isAdmin ? { borderColor: 'var(--accent)' } : undefined}
+                >
                     <p className="text-sm text-muted">
                         {t('chat.posting_as')}: {identity}
+                        {isAdmin && <span className="ml-2 text-xs font-semibold text-[var(--accent)]">ADMIN · UNRESTRICTED</span>}
                     </p>
                     <input
                         value={title}
                         onChange={e => setTitle(e.target.value)}
                         className="w-full border rounded px-2 py-1"
                         placeholder={t('chat.title_placeholder')}
+                        style={{ overflowWrap: 'anywhere' }}
                     />
                     <textarea
                         value={body}
                         onChange={e => setBody(e.target.value)}
                         className="w-full border rounded px-2 py-1"
-                        rows={4}
-                        placeholder={t('chat.body_placeholder')}
+                        rows={isAdmin ? 8 : 4}
+                        placeholder={isAdmin ? t('chat.admin_body_placeholder') : t('chat.body_placeholder')}
+                        style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
                     />
                     <div className="flex gap-2">
                         <select value={kind} onChange={e => setKind(e.target.value as any)} className="border rounded px-2 py-1">
@@ -172,6 +179,7 @@ const CommunityChat = ({ onBack }: { onBack: () => void }) => {
                             {t('chat.post')}
                         </button>
                     </div>
+                    {isAdmin && <p className="text-xs text-muted">{t('chat.admin_unrestricted_hint')}</p>}
                     {error && <p className="text-red-500 text-sm">{error}</p>}
                 </div>
             )}
@@ -194,10 +202,13 @@ const CommunityChat = ({ onBack }: { onBack: () => void }) => {
                                 <span>{th.nickname_snapshot}</span>
                                 <span>{new Date(th.created_at * 1000).toLocaleString()}</span>
                             </div>
-                            <h3 className="font-semibold break-words">{th.title}</h3>
+                            <h3 className="font-semibold" style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}>{th.title}</h3>
                             {th.review_status === 'pending' && <span className="text-xs text-amber-500">{t('chat.pending_review')}</span>}
                             {isOpen ? (
-                                <div className="prose prose-sm max-w-none break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
+                                <div
+                                    className="prose prose-sm max-w-none whitespace-pre-wrap"
+                                    style={{ overflowWrap: 'anywhere', wordBreak: 'break-word', maxWidth: '100%' }}
+                                >
                                     <ReactMarkdown rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>
                                         {th.body}
                                     </ReactMarkdown>
@@ -206,7 +217,8 @@ const CommunityChat = ({ onBack }: { onBack: () => void }) => {
                                 <button
                                     type="button"
                                     onClick={() => setExpanded(prev => new Set(prev).add(th.id))}
-                                    className="text-left text-sm text-muted break-words [overflow-wrap:anywhere] line-clamp-2 w-full"
+                                    className="text-left text-sm text-muted line-clamp-2 w-full"
+                                    style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
                                 >
                                     {th.body.slice(0, 120)}
                                     {th.body.length > 120 ? '…' : ''}
